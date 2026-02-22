@@ -24,11 +24,13 @@ ENV/
 logs/
 *.log
 
-# 生成的报告
+# 生成的报告（docs目录下的报告文件除外）
 *.html
 *.txt
 !README.md
 !requirements.txt
+!docs/*.html
+!docs/*.txt
 
 # macOS
 .DS_Store
