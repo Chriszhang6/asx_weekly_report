@@ -15,10 +15,10 @@
 name: ASX Weekly Investment Report
 
 on:
-  # 每周六早上8:00（UTC时间）运行 = 悉尼时间周六下午7:00 / 北京时间周六下午4:00
+  # 每天UTC 22:00运行 = 澳大利亚东部标准时间(AEST)早上8:00
   # 如需调整时间，请修改 cron 表达式
   schedule:
-    - cron: '0 8 * * 6'
+    - cron: '0 22 * * *'
 
   # 允许手动触发
   workflow_dispatch:
@@ -76,6 +76,14 @@ jobs:
             *.html
             *.txt
           retention-days: 30
+
+      # 部署到GitHub Pages
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          publish_branch: gh-pages
 
       # 如果失败，发送通知
       - name: Report failure

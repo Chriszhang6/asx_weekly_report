@@ -1,8 +1,8 @@
-# 澳洲股市投资周报自动化系统 | ASX Weekly Investment Report Automation System
+# ASX每日市场报告自动化系统 | ASX Daily Market Report Automation System
 
-> 每周六早上8点自动生成并发送澳洲股市(ASX)投资周报到您的邮箱
+> 每天早上8点（AEST）自动生成并发送澳洲股市(ASX)每日市场报告到您的邮箱，并发布到GitHub Pages
 >
-> Automatically generate and send ASX (Australian Securities Exchange) investment weekly reports to your email every Saturday at 8 AM
+> Automatically generate and send ASX (Australian Securities Exchange) daily market reports to your email every day at 8 AM (AEST) and publish to GitHub Pages
 
 ## 功能特点 | Features
 
@@ -10,7 +10,8 @@
 - 📈 **券商推荐 | Broker Recommendations**: 最新买入评级和目标价 | Latest buy ratings and price targets
 - 🏭 **板块分析 | Sector Analysis**: 矿业、科技、银行、医疗等热门板块 | Popular sectors including mining, technology, banking, healthcare
 - 🎯 **个股深度 | Stock Insights**: 重点股票详细分析（BHP、XRO等）| Detailed analysis of key stocks (BHP, XRO, etc.)
-- 📅 **投资日历 | Investment Calendar**: 下周重要事件提醒 | Important events reminder for next week
+- 📅 **投资日历 | Investment Calendar**: 近期重要事件提醒 | Important events reminder for upcoming days
+- 🌐 **GitHub Pages | Web Archive**: 所有历史报告自动发布到GitHub Pages | All historical reports automatically published to GitHub Pages
 - ⚠️ **风险提示 | Risk Analysis**: 投资风险分析 | Investment risk analysis
 
 ## 系统要求 | System Requirements
@@ -99,16 +100,24 @@ git push -u origin main
 | `GMAIL_APP_PASSWORD` | `GMAIL_APP_PASSWORD` | Gmail应用密码（16位）| Gmail app password (16 characters) | `abcd efgh ijkl mnop` | `abcd efgh ijkl mnop` |
 | `RECIPIENT_EMAIL` | `RECIPIENT_EMAIL` | 收件人邮箱（可选）| Recipient email (optional) | `recipient@example.com` | `recipient@example.com` |
 
-#### 3. 启用Workflow | 3. Enable Workflow
+#### 3. 启用GitHub Pages | 3. Enable GitHub Pages
+
+- 进入仓库的 Settings → Pages | Go to Repository Settings → Pages
+- Source 选择 "Deploy from a branch" | Select "Deploy from a branch" as Source
+- Branch 选择 "gh-pages" 和 "/ (root)" | Select "gh-pages" branch and "/ (root)" folder
+- 点击 Save | Click Save
+
+#### 4. 启用Workflow | 4. Enable Workflow
 
 - 进入仓库的 "Actions" 标签 | Go to the "Actions" tab in your repository
 - 找到 "ASX Weekly Investment Report" workflow | Find the "ASX Weekly Investment Report" workflow
 - 点击 "Enable workflow" | Click "Enable workflow"
 
-#### 4. 手动测试 | 4. Manual Testing
+#### 5. 手动测试 | 5. Manual Testing
 
 - 在Actions页面，选择 "ASX Weekly Investment Report" | On the Actions page, select "ASX Weekly Investment Report"
 - 点击 "Run workflow" 按钮手动触发 | Click the "Run workflow" button to trigger manually
+- 等待运行完成后，访问 `https://YOUR_USERNAME.github.io/YOUR_REPO/` 查看报告 | After completion, visit `https://YOUR_USERNAME.github.io/YOUR_REPO/` to view the report
 
 ## 文件结构 | File Structure
 
@@ -123,6 +132,9 @@ git push -u origin main
 │   └── workflows/
 │       └── asx-weekly-report.yml  # GitHub Actions配置 | GitHub Actions configuration
 ├── README.md                       # 说明文档 | Documentation
+├── docs/                           # GitHub Pages输出目录 | GitHub Pages output directory
+│   ├── index.html                  # 报告归档首页 | Report archive index
+│   └── asx_report_YYYYMMDD.html   # 每日报告HTML | Daily report HTML
 └── logs/                           # 运行日志 | Run logs
     └── cron.log
 ```
@@ -157,10 +169,19 @@ RECIPIENT_EMAIL=
 包含完整内容的纯文本格式 | Complete content in plain text format
 
 ### 输出位置 | Output Location
+
+**本地 | Local:**
 ```
 ~/Downloads/asx_weekly_report/
-├── asx_weekly_report_2026年02月21日.html
-└── asx_weekly_report_2026年02月21日.txt
+├── asx_report_20260221.html
+└── asx_report_20260221.txt
+```
+
+**GitHub Pages:**
+```
+https://YOUR_USERNAME.github.io/YOUR_REPO/
+├── index.html                     # 报告归档首页 | Report archive index
+└── asx_report_20260221.html       # 每日报告 | Daily report
 ```
 
 ## 定时任务 | Scheduled Tasks
@@ -175,11 +196,11 @@ crontab -l
 crontab -e
 ```
 
-默认配置：每周六早上8:00运行 | Default: Run every Saturday at 8:00 AM
+默认配置：每天早上8:00运行 | Default: Run every day at 8:00 AM
 
 ### GitHub Actions
 
-默认配置：每周六早上8:00 UTC（悉尼时间周六下午7:00）| Default: Every Saturday at 8:00 UTC (Sydney time: Saturday 7:00 PM)
+默认配置：每天UTC 22:00（澳大利亚东部标准时间早上8:00）| Default: Every day at 22:00 UTC (8:00 AM AEST)
 
 可在 `.github/workflows/asx-weekly-report.yml` 中修改时间。| Modify the time in `.github/workflows/asx-weekly-report.yml`
 
@@ -212,7 +233,7 @@ crontab -e
 **本地Cron | Local Cron:**
 ```bash
 crontab -e
-# 将 "0 8 * * 6" 改为您想要的时间 | Change "0 8 * * 6" to your desired time
+# 将 "0 8 * * *" 改为您想要的时间 | Change "0 8 * * *" to your desired time
 # 格式: 分 时 日 月 周 | Format: minute hour day month weekday
 ```
 

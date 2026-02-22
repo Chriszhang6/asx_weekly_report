@@ -34,9 +34,13 @@ def clean_string(s: str) -> str:
 
 GMAIL_APP_PASSWORD = clean_string(GMAIL_APP_PASSWORD)
 
-# 输出目录
-OUTPUT_DIR = Path.home() / 'Downloads' / 'asx_weekly_report'
-OUTPUT_DIR.mkdir(exist_ok=True)
+# 输出目录 - GitHub Actions使用docs目录，本地使用Downloads目录
+# 检测是否在GitHub Actions环境中运行
+if os.getenv('GITHUB_ACTIONS') == 'true':
+    OUTPUT_DIR = Path('./docs')
+else:
+    OUTPUT_DIR = Path.home() / 'Downloads' / 'asx_weekly_report'
+OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
 # Z.ai GLM API配置 - 使用 Anthropic 兼容端点
 ZAI_API_URL = "https://api.z.ai/api/anthropic/v1/messages"
@@ -653,7 +657,7 @@ def generate_report_content(research_data: dict) -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>澳洲股市投资周报 - 第{week_number}周</title>
+    <title>ASX每日市场报告 - {report_date}</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -832,8 +836,8 @@ def generate_report_content(research_data: dict) -> str:
 <body>
     <div class="container">
         <div class="header">
-            <h1>🇦🇺 澳洲股市投资周报</h1>
-            <div class="subtitle">第 {week_number} 周 | {report_date} | 自动生成报告</div>
+            <h1>🇦🇺 ASX每日市场报告</h1>
+            <div class="subtitle">{report_date} | 澳大利亚东部标准时间 08:00 | 自动生成报告</div>
         </div>
 
         <div class="section">
@@ -857,7 +861,7 @@ def generate_report_content(research_data: dict) -> str:
         </div>
 
         <div class="section">
-            <div class="section-title">📅 下周投资日历</div>
+            <div class="section-title">📅 近期投资日历</div>
             <div class="content">{investment_calendar_html}</div>
         </div>
 
@@ -901,7 +905,7 @@ def send_email(report_html: str, report_date: str) -> bool:
         # 创建邮件
         msg = MIMEMultipart('alternative')
         # 使用Header正确处理中文和emoji
-        msg['Subject'] = Header(f"🇦🇺 澳洲股市投资周报 - {report_date}", 'utf-8')
+        msg['Subject'] = Header(f"🇦🇺 ASX每日市场报告 - {report_date}", 'utf-8')
         msg['From'] = GMAIL_ADDRESS
         msg['To'] = RECIPIENT_EMAIL
 
@@ -933,7 +937,7 @@ def save_report_locally(report_html: str, report_date: str) -> Path:
     Returns:
         保存的文件路径
     """
-    filename = f"asx_weekly_report_{report_date.replace(' ', '_').replace(':', '-')}.html"
+    filename = f"asx_report_{datetime.now().strftime('%Y%m%d')}.html"
     filepath = OUTPUT_DIR / filename
 
     with open(filepath, 'w', encoding='utf-8') as f:
@@ -941,6 +945,204 @@ def save_report_locally(report_html: str, report_date: str) -> Path:
 
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 报告已保存到: {filepath}")
     return filepath
+
+
+def update_archive_index(report_filename: str) -> None:
+    """
+    更新归档索引页面，列出所有历史报告
+
+    Args:
+        report_filename: 新报告的文件名
+    """
+    index_path = OUTPUT_DIR / 'index.html'
+
+    # 获取所有HTML报告文件（除了index.html）
+    report_files = sorted(
+        [f for f in OUTPUT_DIR.glob('asx_report_*.html')],
+        key=lambda x: x.stat().st_mtime,
+        reverse=True
+    )
+
+    # 生成报告列表HTML
+    report_list_html = ""
+    for report_file in report_files:
+        # 从文件名提取日期
+        date_match = report_file.stem.replace('asx_report_', '')
+        if len(date_match) == 8:
+            try:
+                date_obj = datetime.strptime(date_match, '%Y%m%d')
+                display_date = date_obj.strftime('%Y年%m月%d日')
+                weekday = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][date_obj.weekday()]
+            except:
+                display_date = date_match
+                weekday = ''
+        else:
+            display_date = date_match
+            weekday = ''
+
+        report_list_html += f"""
+        <tr>
+            <td>{display_date} {weekday}</td>
+            <td><a href="{report_file.name}" class="btn-view">查看报告</a></td>
+        </tr>
+        """
+
+    # 生成完整的index.html
+    index_html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASX每日市场报告 - 归档</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }}
+        .container {{
+            background-color: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+        }}
+        .header {{
+            text-align: center;
+            border-bottom: 3px solid #007AFF;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }}
+        .header h1 {{
+            color: #007AFF;
+            margin: 0 0 10px 0;
+            font-size: 32px;
+        }}
+        .header .subtitle {{
+            color: #666;
+            font-size: 14px;
+        }}
+        .info-box {{
+            background-color: #E8F2FF;
+            border-left: 4px solid #007AFF;
+            padding: 15px 20px;
+            margin-bottom: 25px;
+            border-radius: 4px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }}
+        th {{
+            background-color: #007AFF;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }}
+        td {{
+            padding: 12px 15px;
+            border-bottom: 1px solid #ddd;
+        }}
+        tr:hover {{
+            background-color: #f8f9fa;
+        }}
+        .btn-view {{
+            display: inline-block;
+            background-color: #007AFF;
+            color: white;
+            padding: 8px 20px;
+            text-decoration: none;
+            border-radius: 6px;
+            transition: background-color 0.3s;
+        }}
+        .btn-view:hover {{
+            background-color: #0051D5;
+        }}
+        .footer {{
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+        }}
+        .stats {{
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+        }}
+        .stat-item {{
+            text-align: center;
+        }}
+        .stat-number {{
+            font-size: 32px;
+            font-weight: bold;
+            color: #007AFF;
+        }}
+        .stat-label {{
+            color: #666;
+            font-size: 14px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🇦🇺 ASX每日市场报告</h1>
+            <div class="subtitle">澳大利亚股市每日投资报告归档</div>
+        </div>
+
+        <div class="info-box">
+            <strong>📊 关于本报告</strong><br>
+            本报告由AI自动生成，每日早上8点（AEST）更新。报告涵盖ASX市场概况、券商推荐、热门板块分析、个股深度分析等内容。
+        </div>
+
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-number">{len(report_files)}</div>
+                <div class="stat-label">历史报告数</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">每日</div>
+                <div class="stat-label">更新频率</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">08:00</div>
+                <div class="stat-label">发布时间 (AEST)</div>
+            </div>
+        </div>
+
+        <h2 style="color: #007AFF; margin-top: 30px;">📁 历史报告归档</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {report_list_html}
+            </tbody>
+        </table>
+
+        <div class="footer">
+            <p>本报告由AI自动生成，仅供参考，不构成投资建议。</p>
+            <p>股市有风险，投资需谨慎。请咨询专业投资顾问做出决策。</p>
+            <p>最后更新: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} AEST</p>
+        </div>
+    </div>
+</body>
+</html>"""
+
+    with open(index_path, 'w', encoding='utf-8') as f:
+        f.write(index_html)
+
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 归档索引已更新: {index_path}")
 
 
 def generate_text_summary(research_data: dict) -> str:
@@ -954,13 +1156,12 @@ def generate_text_summary(research_data: dict) -> str:
         纯文本摘要
     """
     now = datetime.now()
-    week_number = now.isocalendar()[1]
 
     summary = f"""
 {'='*60}
-澳洲股市投资周报 - 第{week_number}周
+ASX每日市场报告
 {'='*60}
-日期: {now.strftime('%Y年%m月%d日 %H:%M')}
+日期: {now.strftime('%Y年%m月%d日 %H:%M')} AEST
 生成方式: AI自动生成
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -984,7 +1185,7 @@ def generate_text_summary(research_data: dict) -> str:
 {research_data.get('stock_analysis', '暂无数据')}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📅 下周投资日历
+📅 近期投资日历
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {research_data.get('investment_calendar', '暂无数据')}
 
@@ -1004,7 +1205,7 @@ def generate_text_summary(research_data: dict) -> str:
 def main():
     """主函数"""
     print("="*60)
-    print("澳洲股市投资周报生成器")
+    print("ASX每日市场报告生成器")
     print("="*60)
     print(f"开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
@@ -1036,8 +1237,11 @@ def main():
         report_date = datetime.now().strftime("%Y年%m月%d日")
         html_path = save_report_locally(report_html, report_date)
 
+        # 更新归档索引页面
+        update_archive_index(html_path.name)
+
         # 保存纯文本版本
-        txt_filename = f"asx_weekly_report_{report_date.replace(' ', '_').replace(':', '-')}.txt"
+        txt_filename = f"asx_report_{datetime.now().strftime('%Y%m%d')}.txt"
         txt_path = OUTPUT_DIR / txt_filename
         with open(txt_path, 'w', encoding='utf-8') as f:
             f.write(text_summary)
