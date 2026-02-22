@@ -88,6 +88,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs
           publish_branch: gh-pages
+          keep_files: true  # Preserve historical report files
 
       # 如果失败，发送通知
       - name: Report failure
