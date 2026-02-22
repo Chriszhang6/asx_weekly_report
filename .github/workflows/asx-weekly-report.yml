@@ -30,6 +30,10 @@ on:
 jobs:
   generate-report:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
 
     steps:
       # 检出代码
@@ -65,6 +69,19 @@ jobs:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+
+      # 将生成的报告提交到 main 分支的 docs 目录
+      - name: Commit and push report to main
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add docs/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: add ASX report $(date +%Y%m%d)"
+            git push
+          fi
 
       # 上传报告文件（可选）
       - name: Upload reports
