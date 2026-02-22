@@ -1237,6 +1237,12 @@ def main():
         report_date = datetime.now().strftime("%Y年%m月%d日")
         html_path = save_report_locally(report_html, report_date)
 
+        # 确保.nojekyll文件存在（禁用Jekyll处理）
+        nojekyll_path = OUTPUT_DIR / '.nojekyll'
+        if not nojekyll_path.exists():
+            nojekyll_path.touch()
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] 已创建.nojekyll文件")
+
         # 更新归档索引页面
         update_archive_index(html_path.name)
 

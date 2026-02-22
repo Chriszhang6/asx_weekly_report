@@ -72,10 +72,14 @@ jobs:
         if: always()
         with:
           name: asx-report-${{ github.run_number }}
-          path: |
-            *.html
-            *.txt
+          path: docs/
           retention-days: 30
+
+      # 查看生成的文件
+      - name: List generated files
+        run: |
+          echo "Files in docs directory:"
+          ls -la docs/
 
       # 部署到GitHub Pages
       - name: Deploy to GitHub Pages
