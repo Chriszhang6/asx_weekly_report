@@ -104,7 +104,7 @@ git push -u origin main
 
 - 进入仓库的 Settings → Pages | Go to Repository Settings → Pages
 - Source 选择 "Deploy from a branch" | Select "Deploy from a branch" as Source
-- Branch 选择 "gh-pages" 和 "/ (root)" | Select "gh-pages" branch and "/ (root)" folder
+- Branch 选择 "main" 和 "/docs" | Select "main" branch and "/docs" folder
 - 点击 Save | Click Save
 
 #### 4. 启用Workflow | 4. Enable Workflow

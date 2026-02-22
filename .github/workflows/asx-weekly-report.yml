@@ -32,8 +32,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pages: write
-      id-token: write
 
     steps:
       # 检出代码
@@ -97,15 +95,6 @@ jobs:
         run: |
           echo "Files in docs directory:"
           ls -la docs/
-
-      # 部署到GitHub Pages
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs
-          publish_branch: gh-pages
-          keep_files: true  # Preserve historical report files
 
       # 如果失败，发送通知
       - name: Report failure
