@@ -48,8 +48,8 @@ if ! command -v pip3 &> /dev/null; then
     python3 -m ensurepip --upgrade 2>/dev/null || true
 fi
 
-echo "正在安装依赖: requests"
-pip3 install --user requests 2>/dev/null || pip3 install requests
+echo "正在安装依赖: requests, yfinance, html2text"
+pip3 install --user requests yfinance html2text 2>/dev/null || pip3 install requests yfinance html2text
 
 echo -e "${GREEN}✓${NC} 依赖安装完成"
 

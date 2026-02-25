@@ -17,6 +17,14 @@ from pathlib import Path
 import requests
 from urllib.parse import quote
 
+# 尝试导入yfinance，用于获取真实的股市数据
+try:
+    import yfinance as yf
+    YFINANCE_AVAILABLE = True
+except ImportError:
+    YFINANCE_AVAILABLE = False
+    print("警告: yfinance未安装，将使用简化的市场数据。请运行: pip install yfinance")
+
 # ============== 配置区域 ==============
 # 从环境变量读取配置
 GMAIL_ADDRESS = os.getenv('GMAIL_ADDRESS', '')
@@ -91,7 +99,7 @@ def fetch_url(url: str, timeout: int = 30) -> str:
 def get_real_time_data() -> str:
     """
     获取实时ASX市场数据
-    通过抓取权威财经网站获取最新信息
+    通过抓取Yahoo Finance HTML页面获取最新信息
 
     Returns:
         格式化的实时数据文本
@@ -99,24 +107,239 @@ def get_real_time_data() -> str:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 🌐 正在获取实时市场数据...")
 
     context_parts = []
-    current_date = datetime.now().strftime("%Y年%m月")
+    current_date = datetime.now().strftime("%Y年%m月%d日")
+
+    try:
+        # ========== 1. 获取S&P/ASX 200指数数据 ==========
+        print("    📊 获取S&P/ASX 200指数...")
+        asx200_data = _fetch_yahoo_finance_data("%5EAXJO")  # URL encoded ^AXJO
+
+        if asx200_data:
+            market_data = f"""
+## 📊 S&P/ASX 200 指数表现 ({current_date})
+
+{asx200_data}
+
+"""
+            context_parts.append(market_data)
+            print(f"    ✅ ASX 200数据已获取")
+
+        # ========== 2. 获取热门个股数据 ==========
+        print("    📊 获取热门个股...")
+        popular_stocks = {
+            "BHP": "BHP.AX",
+            "CBA": "CBA.AX",
+            "RIO": "RIO.AX",
+            "CSL": "CSL.AX",
+            "MQG": "MQG.AX",
+            "WBC": "WBC.AX",
+        }
+
+        stock_data = "## 🔥 热门个股表现\n\n"
+        for name, ticker in popular_stocks.items():
+            stock_info = _fetch_yahoo_finance_data(ticker)
+            if stock_info:
+                stock_data += f"### {name}\n{stock_info}\n"
+            # 添加小延迟避免请求过快
+            import time
+            time.sleep(0.5)
+
+        context_parts.append(stock_data)
+        print("    ✅ 个股数据获取完成")
+
+        # ========== 3. 获取市场新闻 ==========
+        print("    📰 获取市场新闻...")
+        news_data = _fetch_market_news()
+        if news_data:
+            context_parts.append(news_data)
+
+        result = "\n".join(context_parts)
+        print(f"    ✅ 已获取完整的实时市场数据")
+
+        return result
+
+    except Exception as e:
+        print(f"    ❌ 获取数据失败: {e}")
+        print("    🔄 尝试使用备用网页抓取...")
+        return _get_real_time_data_from_web()
+
+
+def _fetch_yahoo_finance_data(ticker_symbol: str) -> str:
+    """
+    从Yahoo Finance HTML页面抓取股票/指数数据
+
+    Args:
+        ticker_symbol: 股票代码，如 "^AXJO" 或 "BHP.AX"
+
+    Returns:
+        格式化的股票数据文本
+    """
+    try:
+        # 构建Yahoo Finance URL
+        # 对于带^的符号需要URL编码
+        if ticker_symbol.startswith('%5E'):
+            url = f"https://au.finance.yahoo.com/quote/{ticker_symbol}"
+        else:
+            url = f"https://au.finance.yahoo.com/quote/{ticker_symbol}"
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-AU,en;q=0.9',
+        }
+
+        response = requests.get(url, headers=headers, timeout=10)
+
+        if response.status_code != 200:
+            return f"⚠️ 无法获取数据 (HTTP {response.status_code})"
+
+        content = response.text
+
+        # 从HTML中提取JSON数据
+        # Yahoo Finance在页面中嵌入了一个包含所有数据的JSON对象
+        import json
+
+        # 尝试多种方式提取数据
+        patterns = [
+            r'"regularMarketPrice":\s*\{[^}]*"raw":\s*([\d.]+)',
+            r'"price":\s*([\d.]+)',
+        ]
+
+        price = None
+        change = None
+        change_pct = None
+        prev_close = None
+        high = None
+        low = None
+        volume = None
+
+        # 提取当前价格
+        price_match = re.search(r'"regularMarketPrice":\s*\{[^}]*"raw":\s*([\d.]+)', content)
+        if price_match:
+            price = float(price_match.group(1))
+
+        # 提取前收盘价
+        prev_match = re.search(r'"regularMarketPreviousClose":\s*\{[^}]*"raw":\s*([\d.]+)', content)
+        if prev_match:
+            prev_close = float(prev_match.group(1))
+
+        # 提取涨跌额
+        change_match = re.search(r'"regularMarketChange":\s*\{[^}]*"raw":\s*([-\d.]+)', content)
+        if change_match:
+            change = float(change_match.group(1))
+
+        # 提取涨跌幅
+        change_pct_match = re.search(r'"regularMarketChangePercent":\s*\{[^}]*"raw":\s*([-\d.]+)', content)
+        if change_pct_match:
+            change_pct = float(change_pct_match.group(1))
+
+        # 提取最高价
+        high_match = re.search(r'"regularMarketDayHigh":\s*\{[^}]*"raw":\s*([\d.]+)', content)
+        if high_match:
+            high = float(high_match.group(1))
+
+        # 提取最低价
+        low_match = re.search(r'"regularMarketDayLow":\s*\{[^}]*"raw":\s*([\d.]+)', content)
+        if low_match:
+            low = float(low_match.group(1))
+
+        # 提取成交量
+        vol_match = re.search(r'"regularMarketVolume":\s*\{[^}]*"raw":\s*(\d+)', content)
+        if vol_match:
+            volume = int(vol_match.group(1))
+
+        # 格式化输出
+        if price is not None:
+            result = f"- **当前价格**: {price:.2f}\n"
+
+            if change is not None:
+                result += f"- **涨跌额**: {change:+.2f}\n"
+
+            if change_pct is not None:
+                result += f"- **涨跌幅**: {change_pct:+.2f}%\n"
+
+            if prev_close is not None:
+                result += f"- **前收盘**: {prev_close:.2f}\n"
+
+            if high is not None:
+                result += f"- **今日最高**: {high:.2f}\n"
+
+            if low is not None:
+                result += f"- **今日最低**: {low:.2f}\n"
+
+            if volume is not None and volume > 0:
+                result += f"- **成交量**: {volume:,}\n"
+
+            return result
+        else:
+            return f"⚠️ 无法解析价格数据"
+
+    except Exception as e:
+        return f"⚠️ 获取失败: {str(e)}"
+
+
+def _fetch_market_news() -> str:
+    """
+    获取市场新闻（辅助函数）
+    """
+    news_sources = [
+        {
+            "name": "ABC News - Business",
+            "url": "https://www.abc.net.au/news/business/",
+            "description": "ABC财经新闻"
+        },
+        {
+            "name": "AFR",
+            "url": "https://www.afr.com/",
+            "description": "澳洲金融评论"
+        }
+    ]
+
+    news_parts = []
+    for source in news_sources:
+        content = fetch_url(source['url'])
+        if content and not content.startswith("获取网页失败"):
+            # 提取标题和新闻内容（更智能的提取）
+            lines = content.split('\n')
+            news_items = []
+            for i, line in enumerate(lines):
+                # 跳过导航和菜单
+                if any(skip in line for skip in ['MENU', 'Skip to', 'Login', 'Subscribe', '***', '---']):
+                    continue
+                # 保留看起来像新闻标题的行
+                if len(line.strip()) > 20 and len(line.strip()) < 200:
+                    if any(keyword in line.lower() for keyword in ['asx', 'market', 'share', 'stock', 'bank', 'bhp', 'inflation', 'rba']):
+                        news_items.append(line.strip())
+                if len(news_items) >= 5:  # 最多取5条
+                    break
+
+            if news_items:
+                news_parts.append(f"### {source['name']}\n\n" + "\n".join(f"- {item}" for item in news_items))
+
+    if news_parts:
+        return "## 📰 市场新闻\n\n" + "\n\n".join(news_parts)
+    return ""
+
+
+def _get_real_time_data_from_web() -> str:
+    """
+    备用方案：通过网页抓取获取数据
+    """
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🌐 正在从网页获取实时市场数据...")
+
+    context_parts = []
 
     # 定义要抓取的权威财经网站
     sources = [
         {
-            "name": "Motley Fool Australia - 最新推荐",
-            "url": "https://www.fool.com.au/investing/stock-market/share-market-news/",
-            "description": "澳洲投资资讯平台的最新市场新闻"
+            "name": "ABC News - Business",
+            "url": "https://www.abc.net.au/news/business/",
+            "description": "ABC财经新闻"
         },
         {
-            "name": "Motley Fool Australia - 券商推荐",
-            "url": "https://www.fool.com.au/tickers/asx-hvn/",
-            "description": "券商买入评级股票"
-        },
-        {
-            "name": "Market Index - ASX新闻",
-            "url": "https://www.marketindex.com.au/asx-reports/",
-            "description": "ASX报告和市场分析"
+            "name": "SBS News - Business",
+            "url": "https://www.sbs.com.au/news/topic/business",
+            "description": "SBS财经新闻"
         }
     ]
 
@@ -126,10 +349,25 @@ def get_real_time_data() -> str:
         content = fetch_url(source['url'])
 
         if content and not content.startswith("获取网页失败"):
-            context_parts.append(f"""
+            # 智能提取新闻内容
+            lines = content.split('\n')
+            news_items = []
+            for line in lines:
+                line = line.strip()
+                # 跳过导航和菜单
+                if any(skip in line for skip in ['MENU', 'Skip to', 'Login', 'Subscribe', '***', '---', '|||']):
+                    continue
+                # 保留看起来像新闻标题的行
+                if 20 < len(line) < 200 and not line.startswith('['):
+                    news_items.append(line)
+                if len(news_items) >= 10:
+                    break
+
+            if news_items:
+                context_parts.append(f"""
 ## {source['name']}
 
-{content[:3000]}
+{chr(10).join(f'- {item}' for item in news_items[:10])}
 
 ---
 """)
