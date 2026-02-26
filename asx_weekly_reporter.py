@@ -114,6 +114,13 @@ def get_real_time_data() -> str:
         print("    📊 获取S&P/ASX 200指数...")
         asx200_data = _fetch_yahoo_finance_data("%5EAXJO")  # URL encoded ^AXJO
 
+        # 解析涨跌幅
+        change_pct = None
+        if "涨跌幅" in asx200_data:
+            match = re.search(r'涨跌幅.*?([-\d.]+)%', asx200_data)
+            if match:
+                change_pct = float(match.group(1))
+
         if asx200_data:
             market_data = f"""
 ## 📊 S&P/ASX 200 指数表现 ({current_date})
@@ -124,28 +131,16 @@ def get_real_time_data() -> str:
             context_parts.append(market_data)
             print(f"    ✅ ASX 200数据已获取")
 
-        # ========== 2. 获取热门个股数据 ==========
-        print("    📊 获取热门个股...")
-        popular_stocks = {
-            "BHP": "BHP.AX",
-            "CBA": "CBA.AX",
-            "RIO": "RIO.AX",
-            "CSL": "CSL.AX",
-            "MQG": "MQG.AX",
-            "WBC": "WBC.AX",
-        }
+        # ========== 2. 大幅涨跌时获取原因 ==========
+        if change_pct is not None and abs(change_pct) >= 1.5:
+            print(f"    📰 涨跌幅达到 {change_pct:+.2f}%，获取市场原因...")
+            reason_data = _fetch_market_reasons()
+            if reason_data:
+                context_parts.append(f"""
+## 📈 市场变动原因
 
-        stock_data = "## 🔥 热门个股表现\n\n"
-        for name, ticker in popular_stocks.items():
-            stock_info = _fetch_yahoo_finance_data(ticker)
-            if stock_info:
-                stock_data += f"### {name}\n{stock_info}\n"
-            # 添加小延迟避免请求过快
-            import time
-            time.sleep(0.5)
-
-        context_parts.append(stock_data)
-        print("    ✅ 个股数据获取完成")
+{reason_data}
+""")
 
         # ========== 3. 获取市场新闻 ==========
         print("    📰 获取市场新闻...")
@@ -319,6 +314,53 @@ def _fetch_market_news() -> str:
     if news_parts:
         return "## 📰 市场新闻\n\n" + "\n\n".join(news_parts)
     return ""
+
+
+def _fetch_market_reasons() -> str:
+    """
+    获取市场变动原因（大幅涨跌时使用）
+    重点关注与大盘相关的新闻
+    """
+    # 搜索市场变动原因的关键词
+    keywords = [
+        "ASX 200", "ASX", "market", "index", "RBA", "interest rate",
+        "inflation", "earnings", "Wall Street", "US market",
+        "China", "iron ore", "Lithium", "banks"
+    ]
+
+    news_sources = [
+        ("ABC News - Business", "https://www.abc.net.au/news/business/"),
+        ("Reuters", "https://www.reuters.com/finance/"),
+    ]
+
+    reasons = []
+
+    for name, url in news_sources:
+        try:
+            content = fetch_url(url)
+            if content and not content.startswith("获取网页失败"):
+                lines = content.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    # 跳过导航
+                    if any(skip in line for skip in ['MENU', 'Skip to', 'Login', 'Subscribe']):
+                        continue
+                    # 检查是否包含市场相关关键词
+                    if 20 < len(line) < 200:
+                        line_lower = line.lower()
+                        if any(keyword.lower() in line_lower for keyword in keywords):
+                            if line not in reasons:
+                                reasons.append(line)
+                                if len(reasons) >= 3:
+                                    break
+                if len(reasons) >= 3:
+                    break
+        except Exception as e:
+            print(f"        ⚠️  {name} 获取失败: {e}")
+
+    if reasons:
+        return "\n".join(f"- {r}" for r in reasons[:3])
+    return "暂无明确的市场变动原因"
 
 
 def _get_real_time_data_from_web() -> str:
@@ -867,6 +909,114 @@ def generate_market_research() -> dict:
     }
 
 
+def generate_asx_chart() -> str:
+    """
+    生成ASX 200过去1个月的走势图
+
+    Returns:
+        Base64编码的PNG图片数据URL
+    """
+    try:
+        import matplotlib
+        matplotlib.use('Agg')  # 使用非交互式后端
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        from io import BytesIO
+        import base64
+
+        print("    📈 生成ASX 200走势图...")
+
+        # 获取过去1个月的数据
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=35)  # 多获取几天以确保有足够的交易日
+
+        # 构建Yahoo Finance图表URL
+        # 使用Historical Data API
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/%5EAXJO"
+        params = {
+            "period1": int(start_date.timestamp()),
+            "period2": int(end_date.timestamp()),
+            "interval": "1d",
+        }
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        }
+
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        if response.status_code != 200:
+            print("        ⚠️  无法获取图表数据")
+            return ""
+
+        data = response.json()
+
+        # 解析数据
+        result = data.get("chart", {}).get("result", [])
+        if not result:
+            print("        ⚠️  图表数据为空")
+            return ""
+
+        timestamps = result[0].get("timestamp", [])
+        closes = result[0].get("indicators", {}).get("quote", [{}])[0].get("close", [])
+
+        if not timestamps or not closes:
+            print("        ⚠️  无法解析价格数据")
+            return ""
+
+        # 过滤空值
+        valid_data = [(t, c) for t, c in zip(timestamps, closes) if c is not None]
+        if len(valid_data) < 5:
+            print("        ⚠️  有效数据不足")
+            return ""
+
+        dates = [datetime.fromtimestamp(t) for t, _ in valid_data]
+        prices = [c for _, c in valid_data]
+
+        # 生成图表
+        plt.figure(figsize=(10, 4))
+        plt.plot(dates, prices, linewidth=2, color='#007AFF')
+        plt.fill_between(dates, prices, alpha=0.1, color='#007AFF')
+
+        # 设置标题和标签
+        current_price = prices[-1]
+        change = prices[-1] - prices[0]
+        change_pct = (change / prices[0]) * 100
+
+        title = f"ASX 200 - Past 1 Month | Current: {current_price:.2f} ({change:+.2f}, {change_pct:+.2f}%)"
+        plt.title(title, fontsize=12, fontweight='bold')
+        plt.ylabel('Index Level', fontsize=10)
+
+        # 格式化x轴
+        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+        try:
+            plt.gca().xaxis.set_major_locator(mdates.WeekdayLocator(by=mdates.MO))
+        except TypeError:
+            # 旧版本matplotlib兼容
+            plt.gca().xaxis.set_major_locator(mdates.DayLocator(interval=7))
+        plt.xticks(rotation=45)
+
+        # 添加网格
+        plt.grid(True, alpha=0.3, linestyle='--')
+        plt.tight_layout()
+
+        # 保存为base64图片
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', dpi=100, bbox_inches='tight')
+        buffer.seek(0)
+        image_base64 = base64.b64encode(buffer.read()).decode()
+        plt.close()
+
+        print(f"    ✅ 图表生成成功 (数据点: {len(dates)})")
+        return f"data:image/png;base64,{image_base64}"
+
+    except ImportError:
+        print("        ⚠️  matplotlib未安装，无法生成图表")
+        return ""
+    except Exception as e:
+        print(f"        ⚠️  图表生成失败: {e}")
+        return ""
+
+
 def generate_report_content(research_data: dict) -> str:
     """
     生成完整的周报HTML内容
@@ -880,6 +1030,12 @@ def generate_report_content(research_data: dict) -> str:
     now = datetime.now()
     report_date = now.strftime("%Y年%m月%d日")
     week_number = now.isocalendar()[1]
+
+    # 生成走势图
+    chart_url = generate_asx_chart()
+    chart_html = ""
+    if chart_url:
+        chart_html = f'<div style="text-align:center; margin: 20px 0;"><img src="{chart_url}" alt="ASX 200走势图" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1);"></div>'
 
     # 转换Markdown为HTML
     market_overview_html = markdown_to_html(research_data.get('market_overview', '暂无数据'))
@@ -1080,7 +1236,7 @@ def generate_report_content(research_data: dict) -> str:
 
         <div class="section">
             <div class="section-title">📊 市场概况</div>
-            <div class="content">{market_overview_html}</div>
+            <div class="content">{chart_html}{market_overview_html}</div>
         </div>
 
         <div class="section">
