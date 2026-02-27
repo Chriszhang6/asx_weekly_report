@@ -809,20 +809,7 @@ def generate_market_research() -> dict:
 
     market_overview = call_zai_api(market_overview_prompt, realtime_context)
 
-    # 第二部分：券商最新推荐
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在获取券商最新推荐...")
-    broker_recommendations_prompt = """你是澳洲股市研究专家。请提供本周澳洲券商（如Bell Potter、Morgans、Macquarie、Goldman Sachs等）的最新股票推荐，包括：
-
-1. 新获得买入评级的ASX股票
-2. 券商目标价调整
-3. 推荐理由摘要
-
-请用中文回复，重点关注意2026年2月的最新推荐。格式如下：
-股票代码 | 公司名称 | 券商 | 评级 | 目标价 | 核心理由"""
-
-    broker_recommendations = call_zai_api(broker_recommendations_prompt, realtime_context)
-
-    # 第三部分：热门板块分析
+    # 第二部分：热门板块分析
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在分析热门板块...")
     sector_analysis_prompt = """你是澳洲股市板块分析专家。请分析本周ASX热门板块的表现和前景，重点关注：
 
@@ -842,7 +829,7 @@ def generate_market_research() -> dict:
 
     sector_analysis = call_zai_api(sector_analysis_prompt, realtime_context)
 
-    # 第四部分：个股深度分析
+    # 第三部分：个股深度分析
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在进行个股深度分析...")
     stock_analysis_prompt = """你是澳洲股市个股分析专家。请根据本周市场动态，自主挑选3-5只最值得关注的ASX股票进行深度分析。
 
@@ -871,7 +858,7 @@ def generate_market_research() -> dict:
 
     stock_analysis = call_zai_api(stock_analysis_prompt, realtime_context)
 
-    # 第五部分：投资日历
+    # 第四部分：投资日历
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在整理下周投资日历...")
     investment_calendar_prompt = """你是澳洲股市投资日历专家。请提供下周（下周一到下周五）ASX的重要事件，包括：
 
@@ -885,7 +872,7 @@ def generate_market_research() -> dict:
 
     investment_calendar = call_zai_api(investment_calendar_prompt, realtime_context)
 
-    # 第六部分：风险提示
+    # 第五部分：风险提示
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在分析风险因素...")
     risk_alert_prompt = """你是澳洲股市风险分析专家。请分析当前投资者需要注意的主要风险，包括：
 
@@ -901,7 +888,6 @@ def generate_market_research() -> dict:
 
     return {
         "market_overview": market_overview,
-        "broker_recommendations": broker_recommendations,
         "sector_analysis": sector_analysis,
         "stock_analysis": stock_analysis,
         "investment_calendar": investment_calendar,
@@ -1039,7 +1025,6 @@ def generate_report_content(research_data: dict) -> str:
 
     # 转换Markdown为HTML
     market_overview_html = markdown_to_html(research_data.get('market_overview', '暂无数据'))
-    broker_recommendations_html = markdown_to_html(research_data.get('broker_recommendations', '暂无数据'))
     sector_analysis_html = markdown_to_html(research_data.get('sector_analysis', '暂无数据'))
     stock_analysis_html = markdown_to_html(research_data.get('stock_analysis', '暂无数据'))
     investment_calendar_html = markdown_to_html(research_data.get('investment_calendar', '暂无数据'))
@@ -1237,11 +1222,6 @@ def generate_report_content(research_data: dict) -> str:
         <div class="section">
             <div class="section-title">📊 市场概况</div>
             <div class="content">{chart_html}{market_overview_html}</div>
-        </div>
-
-        <div class="section">
-            <div class="section-title">📈 券商最新推荐</div>
-            <div class="content">{broker_recommendations_html}</div>
         </div>
 
         <div class="section">
@@ -1493,7 +1473,7 @@ def update_archive_index(report_filename: str) -> None:
 
         <div class="info-box">
             <strong>📊 关于本报告</strong><br>
-            本报告由AI自动生成，每日早上8点（AEST）更新。报告涵盖ASX市场概况、券商推荐、热门板块分析、个股深度分析等内容。
+            本报告由AI自动生成，每日早上8点（AEST）更新。报告涵盖ASX市场概况、热门板块分析、个股深度分析等内容。
         </div>
 
         <div class="stats">
@@ -1562,11 +1542,6 @@ ASX每日市场报告
 📊 市场概况
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {research_data.get('market_overview', '暂无数据')}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📈 券商最新推荐
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{research_data.get('broker_recommendations', '暂无数据')}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🏭 热门板块分析
