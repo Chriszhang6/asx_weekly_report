@@ -809,27 +809,7 @@ def generate_market_research() -> dict:
 
     market_overview = call_zai_api(market_overview_prompt, realtime_context)
 
-    # 第二部分：热门板块分析
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在分析热门板块...")
-    sector_analysis_prompt = """你是澳洲股市板块分析专家。请分析本周ASX热门板块的表现和前景，重点关注：
-
-1. 矿业/资源板块（铁矿、锂矿、稀土、铀矿）
-2. 科技板块
-3. 银行板块
-4. 医疗健康板块
-5. 消费/零售板块
-
-每个板块请包含：
-- 本周表现
-- 驱动因素
-- 代表性股票
-- 未来展望
-
-请用中文回复，数据准确。"""
-
-    sector_analysis = call_zai_api(sector_analysis_prompt, realtime_context)
-
-    # 第三部分：个股深度分析
+    # 第二部分：个股深度分析
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在进行个股深度分析...")
     stock_analysis_prompt = """你是澳洲股市个股分析专家。请根据本周市场动态，自主挑选3-5只最值得关注的ASX股票进行深度分析。
 
@@ -858,37 +838,56 @@ def generate_market_research() -> dict:
 
     stock_analysis = call_zai_api(stock_analysis_prompt, realtime_context)
 
-    # 第四部分：投资日历
+    # 第三部分：投资日历
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在整理下周投资日历...")
-    investment_calendar_prompt = """你是澳洲股市投资日历专家。请提供下周（下周一到下周五）ASX的重要事件，包括：
+    investment_calendar_prompt = """你是澳洲股市投资日历专家。请提供近期ASX的重要事件。
 
+**格式要求（严格遵守）：**
+- 每个事件一行，格式：**日期** - 事件简述（1-2句话说明市场预期或影响）
+- 不要长篇大论，不要解释概念
+- 只列出确定或高概率的事件
+- 按日期排序
+
+示例格式：
+- 2月28日 - RBA公布利率决议，市场预期维持4.35%不变
+- 3月1日 - 澳洲第四季度GDP数据，预期增长0.2%
+
+涵盖内容：
 1. 重要财报发布日期
 2. 经济数据公布
 3. 央行决议/讲话
 4. IPO日历
 5. 除息除权日
 
-请用中文回复，按日期排序。如果无法获取确切日期，请说明"待公布"并提供一般性指引。"""
+请用中文回复，简洁直接。如果无法获取确切日期，请只列出高概率事件。"""
 
     investment_calendar = call_zai_api(investment_calendar_prompt, realtime_context)
 
-    # 第五部分：风险提示
+    # 第四部分：风险提示
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在分析风险因素...")
-    risk_alert_prompt = """你是澳洲股市风险分析专家。请分析当前投资者需要注意的主要风险，包括：
+    risk_alert_prompt = """你是澳洲股市风险分析专家。请分析当前投资者需要关注的关键风险。
 
-1. 宏观经济风险（利率、通胀、汇率）
-2. 地缘政治风险
-3. 板块特定风险
-4. 市场估值风险
-5. 流动性风险
+**重要要求：**
+- 只列出**即时、具体**的风险事件
+- 不要列举泛泛而谈的长期风险（如"通胀风险"、"地缘政治不确定性"等）
+- 每个风险必须有时间节点、具体事件或明确触发条件
+- 简洁表达，一个风险一段话
 
-请用中文回复，每项风险给出具体说明和应对建议。"""
+**格式：**
+- 标题：日期/事件 - 风险描述（1-2句话）
+- 示例：**2月28日 RBA议息** - 若意外加息可能引发市场波动
+
+重点关注：
+1. 近期即将发生的事件性风险（财报、议息会议、数据发布等）
+2. 今日市场暴露出的特定风险
+3. 板块或个股的即时风险
+
+请用中文回复，简洁专业。如果没有明确的即时风险，请说明"当前无特殊风险事件"。"""
 
     risk_alert = call_zai_api(risk_alert_prompt, realtime_context)
 
     return {
         "market_overview": market_overview,
-        "sector_analysis": sector_analysis,
         "stock_analysis": stock_analysis,
         "investment_calendar": investment_calendar,
         "risk_alert": risk_alert
@@ -1025,7 +1024,6 @@ def generate_report_content(research_data: dict) -> str:
 
     # 转换Markdown为HTML
     market_overview_html = markdown_to_html(research_data.get('market_overview', '暂无数据'))
-    sector_analysis_html = markdown_to_html(research_data.get('sector_analysis', '暂无数据'))
     stock_analysis_html = markdown_to_html(research_data.get('stock_analysis', '暂无数据'))
     investment_calendar_html = markdown_to_html(research_data.get('investment_calendar', '暂无数据'))
     risk_alert_html = markdown_to_html(research_data.get('risk_alert', '暂无数据'))
@@ -1222,11 +1220,6 @@ def generate_report_content(research_data: dict) -> str:
         <div class="section">
             <div class="section-title">📊 市场概况</div>
             <div class="content">{chart_html}{market_overview_html}</div>
-        </div>
-
-        <div class="section">
-            <div class="section-title">🏭 热门板块分析</div>
-            <div class="content">{sector_analysis_html}</div>
         </div>
 
         <div class="section">
@@ -1473,7 +1466,7 @@ def update_archive_index(report_filename: str) -> None:
 
         <div class="info-box">
             <strong>📊 关于本报告</strong><br>
-            本报告由AI自动生成，每日早上8点（AEST）更新。报告涵盖ASX市场概况、热门板块分析、个股深度分析等内容。
+            本报告由AI自动生成，每日早上8点（AEST）更新。报告涵盖ASX市场概况、个股深度分析等内容。
         </div>
 
         <div class="stats">
@@ -1542,11 +1535,6 @@ ASX每日市场报告
 📊 市场概况
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {research_data.get('market_overview', '暂无数据')}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🏭 热门板块分析
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{research_data.get('sector_analysis', '暂无数据')}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 个股深度分析
