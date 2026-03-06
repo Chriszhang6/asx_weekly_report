@@ -798,91 +798,74 @@ def generate_market_research() -> dict:
 
     # 第一部分：市场整体概况
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在分析ASX市场整体概况...")
-    market_overview_prompt = """你是专业的澳洲股市分析师。请分析本周澳洲股市(ASX)的整体表现，包括：
+    market_overview_prompt = """你是一名给朋友写邮件的澳洲股市分析师。用简洁直白的语言总结今日ASX市场。
 
-1. S&P/ASX 200指数表现
-2. 主要板块涨跌幅
-3. 市场情绪和关键事件
-4. 宏观经济环境（利率、通胀等）
+**严格要求：**
+- 不要自我介绍，不要写"报告日期"、"分析师"等元信息
+- 不要写"根据现有信息无法确认"之类的废话，没有数据就跳过
+- 不要加"总结"段落，全文本身就是总结
+- 用数字说话，少用形容词
+- 全文控制在300字以内
 
-请用中文回复，内容要专业、简洁，包含具体数字。今天是{current_date}。"""
+**内容（每项1-2句话）：**
+1. ASX 200今日收盘点位、涨跌幅
+2. 今日最大的1-2个市场驱动因素
+3. 值得注意的板块或个股异动
+
+今天是{current_date}。"""
 
     market_overview = call_zai_api(market_overview_prompt, realtime_context)
 
     # 第二部分：个股深度分析
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在进行个股深度分析...")
-    stock_analysis_prompt = """你是澳洲股市个股分析专家。请根据本周市场动态，自主挑选3-5只最值得关注的ASX股票进行深度分析。
+    stock_analysis_prompt = """根据今日市场新闻，挑选2-3只最值得关注的ASX股票，简要分析。
 
-**选股标准：**
-1. 基于上述实时数据中的市场热点和新闻
-2. 本周有重要动态（财报、公告、重大事件等）的股票
-3. 券商评级有重要调整的股票
-4. 板块轮动中的受益者或受损者
-5. 技术面出现重要信号的股票
+**严格要求：**
+- 不要自我介绍或写报告元信息
+- 不要写"根据现有信息无法确认"，没数据就不提
+- 每只股票控制在100字以内
+- 不要写技术分析（支撑位、阻力位），普通读者不关心
+- 只写读者能行动的信息
 
-请涵盖不同板块和市值，例如：
-- 蓝筹股（如四大银行、BHP、RIO等）
-- 科技股（如XRO、WTC等）
-- 资源股（如锂矿、稀土、铀矿等）
-- 医疗/消费/零售等其他板块
+**每只股票格式：**
+- **股票代码 公司名** — 一句话说明今天为什么值得关注
+- 股价表现（涨跌幅）
+- 关键原因（1-2句话）
 
-对每只选中的股票，请提供：
-- **股票代码与公司名称**
-- **本周股价表现**（涨幅、跌幅、成交量等）
-- **本周驱动因素**（公司动态、行业新闻、宏观环境等）
-- **券商观点汇总**（评级、目标价、最新研究报告摘要）
-- **技术分析摘要**（趋势、支撑位、阻力位、技术指标等）
-- **投资建议**（买入/持有/卖出及具体理由）
-
-请用中文回复，要有数据支撑。如果实时数据中没有足够的股票信息，请说明并基于你的知识库进行分析。"""
+请用中文回复，像写给朋友的消息一样直接。"""
 
     stock_analysis = call_zai_api(stock_analysis_prompt, realtime_context)
 
     # 第三部分：投资日历
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在整理下周投资日历...")
-    investment_calendar_prompt = """你是澳洲股市投资日历专家。请提供近期ASX的重要事件。
+    investment_calendar_prompt = """列出未来1-2周ASX相关的重要事件。
 
-**格式要求（严格遵守）：**
-- 每个事件一行，格式：**日期** - 事件简述（1-2句话说明市场预期或影响）
-- 不要长篇大论，不要解释概念
-- 只列出确定或高概率的事件
-- 按日期排序
+**格式要求：**
+- 每个事件一行：**日期** - 事件（一句话说明影响）
+- 只列确定的事件，不确定就不写
+- 最多列8个事件
+- 不要写开头的引言段落，直接列事件
 
-示例格式：
-- 2月28日 - RBA公布利率决议，市场预期维持4.35%不变
-- 3月1日 - 澳洲第四季度GDP数据，预期增长0.2%
+示例：
+- **3月10日** - RBA利率决议，市场预期维持不变
+- **3月12日** - NAB商业信心指数公布
 
-涵盖内容：
-1. 重要财报发布日期
-2. 经济数据公布
-3. 央行决议/讲话
-4. IPO日历
-5. 除息除权日
-
-请用中文回复，简洁直接。如果无法获取确切日期，请只列出高概率事件。"""
+请用中文回复。"""
 
     investment_calendar = call_zai_api(investment_calendar_prompt, realtime_context)
 
     # 第四部分：风险提示
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在分析风险因素...")
-    risk_alert_prompt = """你是澳洲股市风险分析专家。请分析当前投资者需要关注的关键风险。
+    risk_alert_prompt = """列出当前1-2个最紧迫的市场风险。
 
-**重要要求：**
-- 只列出**即时、具体**的风险事件
-- 不要列举泛泛而谈的长期风险（如"通胀风险"、"地缘政治不确定性"等）
-- 每个风险必须有时间节点、具体事件或明确触发条件
-- 简洁表达，一个风险一段话
+**要求：**
+- 只写有具体时间点或触发条件的风险
+- 不写"地缘政治不确定性"之类的泛泛之谈
+- 每个风险2-3句话，说清楚是什么、什么时候、可能怎样
+- 如果没有明确的即时风险，就写"当前无特殊风险事件"
+- 不要写开头引言
 
-**格式：**
-- 标题：日期/事件 - 风险描述（1-2句话）
-- 示例：**2月28日 RBA议息** - 若意外加息可能引发市场波动
-
-重点关注：
-1. 近期即将发生的事件性风险（财报、议息会议、数据发布等）
-2. 今日市场暴露出的特定风险
-3. 板块或个股的即时风险
-
-请用中文回复，简洁专业。如果没有明确的即时风险，请说明"当前无特殊风险事件"。"""
+请用中文回复。"""
 
     risk_alert = call_zai_api(risk_alert_prompt, realtime_context)
 
@@ -1020,7 +1003,7 @@ def generate_report_content(research_data: dict) -> str:
     chart_url = generate_asx_chart()
     chart_html = ""
     if chart_url:
-        chart_html = f'<div style="text-align:center; margin: 20px 0;"><img src="{chart_url}" alt="ASX 200走势图" style="max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1);"></div>'
+        chart_html = f'<div style="margin: 12px 0;"><img src="{chart_url}" alt="ASX 200 走势" style="max-width:100%;"></div>'
 
     # 转换Markdown为HTML
     market_overview_html = markdown_to_html(research_data.get('market_overview', '暂无数据'))
@@ -1034,213 +1017,152 @@ def generate_report_content(research_data: dict) -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ASX每日市场报告 - {report_date}</title>
+    <title>ASX市场简报 - {report_date}</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
-            line-height: 1.8;
-            color: #333;
-            max-width: 900px;
+            line-height: 1.7;
+            color: #1a1a1a;
+            max-width: 640px;
             margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
+            padding: 0;
+            background-color: #ffffff;
         }}
         .container {{
-            background-color: white;
-            border-radius: 12px;
-            padding: 40px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            padding: 32px 24px;
         }}
         .header {{
-            text-align: center;
-            border-bottom: 3px solid #007AFF;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #e0e0e0;
         }}
         .header h1 {{
-            color: #007AFF;
-            margin: 0 0 10px 0;
-            font-size: 28px;
-        }}
-        .header .subtitle {{
-            color: #666;
-            font-size: 14px;
-        }}
-        .section {{
-            margin-bottom: 35px;
-        }}
-        .section-title {{
-            color: #007AFF;
-            font-size: 20px;
-            font-weight: 600;
-            margin-bottom: 15px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #E8F2FF;
-        }}
-        .content {{
-            background-color: #F8F9FA;
-            padding: 20px;
-            border-radius: 8px;
-            font-size: 14px;
-            line-height: 1.8;
-        }}
-        /* Markdown转HTML样式 */
-        .content h1 {{
-            color: #007AFF;
+            color: #1a1a1a;
+            margin: 0 0 4px 0;
             font-size: 22px;
-            margin-top: 20px;
-            margin-bottom: 10px;
-            border-bottom: 2px solid #E8F2FF;
-            padding-bottom: 5px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
         }}
-        .content h2 {{
-            color: #007AFF;
-            font-size: 20px;
-            margin-top: 18px;
-            margin-bottom: 8px;
-        }}
-        .content h3 {{
-            color: #333;
-            font-size: 18px;
-            margin-top: 15px;
-            margin-bottom: 6px;
-        }}
-        .content p {{
-            margin: 10px 0;
-        }}
-        .content ul, .content ol {{
-            margin: 10px 0;
-            padding-left: 25px;
-        }}
-        .content li {{
-            margin: 5px 0;
-        }}
-        .content strong {{
-            color: #007AFF;
-            font-weight: 600;
-        }}
-        .content code {{
-            background-color: #e8e8e8;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: 'Monaco', 'Menlo', monospace;
+        .header .date {{
+            color: #888;
             font-size: 13px;
         }}
-        .content pre {{
-            background-color: #2d2d2d;
-            color: #f8f8f2;
-            padding: 15px;
-            border-radius: 8px;
-            overflow-x: auto;
-            margin: 15px 0;
+        .section {{
+            margin-bottom: 28px;
         }}
-        .content pre code {{
-            background-color: transparent;
-            padding: 0;
-            color: inherit;
+        .section-title {{
+            color: #1a1a1a;
+            font-size: 15px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 2px solid #1a1a1a;
+            display: inline-block;
         }}
-        .content table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin: 15px 0;
+        .section-body {{
+            font-size: 15px;
+            line-height: 1.7;
+            color: #333;
         }}
-        .content table th {{
-            background-color: #007AFF;
-            color: white;
-            padding: 12px;
-            text-align: left;
+        .section-body h1, .section-body h2, .section-body h3 {{
+            color: #1a1a1a;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 16px 0 6px 0;
+        }}
+        .section-body h1 {{ font-size: 17px; }}
+        .section-body p {{
+            margin: 8px 0;
+        }}
+        .section-body ul, .section-body ol {{
+            margin: 8px 0;
+            padding-left: 20px;
+        }}
+        .section-body li {{
+            margin: 4px 0;
+        }}
+        .section-body strong {{
+            color: #1a1a1a;
             font-weight: 600;
         }}
-        .content table td {{
-            padding: 10px 12px;
-            border-bottom: 1px solid #ddd;
+        .section-body table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            font-size: 14px;
         }}
-        .content table tr:hover {{
-            background-color: #f0f8ff;
+        .section-body table th {{
+            background-color: #f5f5f5;
+            color: #1a1a1a;
+            padding: 8px 10px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #ddd;
         }}
-        .content hr {{
+        .section-body table td {{
+            padding: 8px 10px;
+            border-bottom: 1px solid #eee;
+        }}
+        .section-body hr {{
             border: none;
-            border-top: 2px solid #E8F2FF;
-            margin: 20px 0;
+            border-top: 1px solid #eee;
+            margin: 16px 0;
         }}
-        .highlight {{
-            background-color: #FFF3CD;
-            padding: 2px 6px;
-            border-radius: 4px;
+        .section-body code {{
+            background-color: #f5f5f5;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 13px;
         }}
-        .risk {{
-            background-color: #FDE8E8;
+        .divider {{
+            border: none;
+            border-top: 1px solid #eee;
+            margin: 0;
         }}
         .footer {{
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-            text-align: center;
-            color: #888;
+            margin-top: 28px;
+            padding-top: 16px;
+            border-top: 1px solid #e0e0e0;
+            color: #aaa;
             font-size: 12px;
+            line-height: 1.5;
         }}
-        .stock-tag {{
-            display: inline-block;
-            background-color: #007AFF;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            margin-right: 5px;
-        }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }}
-        th, td {{
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }}
-        th {{
-            background-color: #007AFF;
-            color: white;
-            font-weight: 600;
-        }}
-        tr:hover {{
-            background-color: #F8F9FA;
-        }}
-        .positive {{ color: #28a745; font-weight: 600; }}
-        .negative {{ color: #dc3545; font-weight: 600; }}
+        .positive {{ color: #16a34a; font-weight: 600; }}
+        .negative {{ color: #dc2626; font-weight: 600; }}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🇦🇺 ASX每日市场报告</h1>
-            <div class="subtitle">{report_date} | 澳大利亚东部标准时间 08:00 | 自动生成报告</div>
+            <h1>ASX 市场简报</h1>
+            <div class="date">{report_date}</div>
         </div>
 
         <div class="section">
             <div class="section-title">📊 市场概况</div>
-            <div class="content">{chart_html}{market_overview_html}</div>
+            <div class="section-body">{chart_html}{market_overview_html}</div>
         </div>
 
         <div class="section">
-            <div class="section-title">🎯 个股深度分析</div>
-            <div class="content">{stock_analysis_html}</div>
+            <div class="section-title">🔍 值得关注</div>
+            <div class="section-body">{stock_analysis_html}</div>
         </div>
 
         <div class="section">
-            <div class="section-title">📅 近期投资日历</div>
-            <div class="content">{investment_calendar_html}</div>
+            <div class="section-title">📅 近期事件</div>
+            <div class="section-body">{investment_calendar_html}</div>
         </div>
 
         <div class="section">
             <div class="section-title">⚠️ 风险提示</div>
-            <div class="content risk">{risk_alert_html}</div>
+            <div class="section-body">{risk_alert_html}</div>
         </div>
 
         <div class="footer">
-            <p>本报告由AI自动生成，仅供参考，不构成投资建议。</p>
-            <p>股市有风险，投资需谨慎。请咨询专业投资顾问做出决策。</p>
-            <p>报告生成时间: {now.strftime('%Y-%m-%d %H:%M:%S')}</p>
+            AI自动生成，仅供参考，不构成投资建议。<br>
+            生成时间: {now.strftime('%Y-%m-%d %H:%M')}
         </div>
     </div>
 </body>
@@ -1272,7 +1194,7 @@ def send_email(report_html: str, report_date: str) -> bool:
         # 创建邮件
         msg = MIMEMultipart('alternative')
         # 使用Header正确处理中文和emoji
-        msg['Subject'] = Header(f"🇦🇺 ASX每日市场报告 - {report_date}", 'utf-8')
+        msg['Subject'] = Header(f"ASX 市场简报 - {report_date}", 'utf-8')
         msg['From'] = GMAIL_ADDRESS
         msg['To'] = RECIPIENT_EMAIL
 
@@ -1350,7 +1272,7 @@ def update_archive_index(report_filename: str) -> None:
         report_list_html += f"""
         <tr>
             <td>{display_date} {weekday}</td>
-            <td><a href="{report_file.name}" class="btn-view">查看报告</a></td>
+            <td><a href="{report_file.name}">查看</a></td>
         </tr>
         """
 
@@ -1360,148 +1282,86 @@ def update_archive_index(report_filename: str) -> None:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ASX每日市场报告 - 归档</title>
+    <title>ASX 市场简报 - 归档</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
             line-height: 1.6;
-            color: #333;
-            max-width: 1000px;
+            color: #1a1a1a;
+            max-width: 640px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f5f5f5;
-        }}
-        .container {{
-            background-color: white;
-            border-radius: 12px;
-            padding: 40px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            background-color: #ffffff;
         }}
         .header {{
-            text-align: center;
-            border-bottom: 3px solid #007AFF;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #e0e0e0;
         }}
         .header h1 {{
-            color: #007AFF;
-            margin: 0 0 10px 0;
-            font-size: 32px;
+            color: #1a1a1a;
+            margin: 0 0 4px 0;
+            font-size: 22px;
+            font-weight: 700;
         }}
         .header .subtitle {{
-            color: #666;
-            font-size: 14px;
-        }}
-        .info-box {{
-            background-color: #E8F2FF;
-            border-left: 4px solid #007AFF;
-            padding: 15px 20px;
-            margin-bottom: 25px;
-            border-radius: 4px;
+            color: #888;
+            font-size: 13px;
         }}
         table {{
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
+            margin-top: 16px;
         }}
         th {{
-            background-color: #007AFF;
-            color: white;
-            padding: 15px;
+            background-color: #f5f5f5;
+            color: #1a1a1a;
+            padding: 10px 12px;
             text-align: left;
             font-weight: 600;
+            border-bottom: 2px solid #ddd;
         }}
         td {{
-            padding: 12px 15px;
-            border-bottom: 1px solid #ddd;
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
         }}
-        tr:hover {{
-            background-color: #f8f9fa;
+        a {{
+            color: #1a1a1a;
+            text-decoration: underline;
         }}
-        .btn-view {{
-            display: inline-block;
-            background-color: #007AFF;
-            color: white;
-            padding: 8px 20px;
-            text-decoration: none;
-            border-radius: 6px;
-            transition: background-color 0.3s;
-        }}
-        .btn-view:hover {{
-            background-color: #0051D5;
+        a:hover {{
+            color: #555;
         }}
         .footer {{
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-            text-align: center;
-            color: #888;
+            margin-top: 28px;
+            padding-top: 16px;
+            border-top: 1px solid #e0e0e0;
+            color: #aaa;
             font-size: 12px;
-        }}
-        .stats {{
-            display: flex;
-            justify-content: space-around;
-            margin: 20px 0;
-        }}
-        .stat-item {{
-            text-align: center;
-        }}
-        .stat-number {{
-            font-size: 32px;
-            font-weight: bold;
-            color: #007AFF;
-        }}
-        .stat-label {{
-            color: #666;
-            font-size: 14px;
         }}
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🇦🇺 ASX每日市场报告</h1>
-            <div class="subtitle">澳大利亚股市每日投资报告归档</div>
-        </div>
+    <div class="header">
+        <h1>ASX 市场简报</h1>
+        <div class="subtitle">历史报告归档 · {len(report_files)} 份报告</div>
+    </div>
 
-        <div class="info-box">
-            <strong>📊 关于本报告</strong><br>
-            本报告由AI自动生成，每日早上8点（AEST）更新。报告涵盖ASX市场概况、个股深度分析等内容。
-        </div>
+    <table>
+        <thead>
+            <tr>
+                <th>日期</th>
+                <th>查看</th>
+            </tr>
+        </thead>
+        <tbody>
+            {report_list_html}
+        </tbody>
+    </table>
 
-        <div class="stats">
-            <div class="stat-item">
-                <div class="stat-number">{len(report_files)}</div>
-                <div class="stat-label">历史报告数</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">每日</div>
-                <div class="stat-label">更新频率</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">08:00</div>
-                <div class="stat-label">发布时间 (AEST)</div>
-            </div>
-        </div>
-
-        <h2 style="color: #007AFF; margin-top: 30px;">📁 历史报告归档</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>日期</th>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                {report_list_html}
-            </tbody>
-        </table>
-
-        <div class="footer">
-            <p>本报告由AI自动生成，仅供参考，不构成投资建议。</p>
-            <p>股市有风险，投资需谨慎。请咨询专业投资顾问做出决策。</p>
-            <p>最后更新: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} AEST</p>
-        </div>
+    <div class="footer">
+        AI自动生成，仅供参考。<br>
+        最后更新: {datetime.now().strftime('%Y-%m-%d %H:%M')}
     </div>
 </body>
 </html>"""
@@ -1524,37 +1384,23 @@ def generate_text_summary(research_data: dict) -> str:
     """
     now = datetime.now()
 
-    summary = f"""
-{'='*60}
-ASX每日市场报告
-{'='*60}
-日期: {now.strftime('%Y年%m月%d日 %H:%M')} AEST
-生成方式: AI自动生成
+    summary = f"""ASX 市场简报
+{now.strftime('%Y年%m月%d日')}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 市场概况
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+--- 市场概况 ---
 {research_data.get('market_overview', '暂无数据')}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 个股深度分析
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+--- 值得关注 ---
 {research_data.get('stock_analysis', '暂无数据')}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📅 近期投资日历
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+--- 近期事件 ---
 {research_data.get('investment_calendar', '暂无数据')}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ 风险提示
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+--- 风险提示 ---
 {research_data.get('risk_alert', '暂无数据')}
 
-{'='*60}
-免责声明: 本报告由AI自动生成，仅供参考，不构成投资建议。
-股市有风险，投资需谨慎。
-{'='*60}
+---
+AI自动生成，仅供参考，不构成投资建议。
 """
     return summary
 
@@ -1562,7 +1408,7 @@ ASX每日市场报告
 def main():
     """主函数"""
     print("="*60)
-    print("ASX每日市场报告生成器")
+    print("ASX 市场简报生成器")
     print("="*60)
     print(f"开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
