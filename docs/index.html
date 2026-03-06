@@ -3,208 +3,151 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ASX每日市场报告 - 归档</title>
+    <title>ASX 市场简报 - 归档</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
             line-height: 1.6;
-            color: #333;
-            max-width: 1000px;
+            color: #1a1a1a;
+            max-width: 640px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: white;
-            border-radius: 12px;
-            padding: 40px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            background-color: #ffffff;
         }
         .header {
-            text-align: center;
-            border-bottom: 3px solid #007AFF;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #e0e0e0;
         }
         .header h1 {
-            color: #007AFF;
-            margin: 0 0 10px 0;
-            font-size: 32px;
+            color: #1a1a1a;
+            margin: 0 0 4px 0;
+            font-size: 22px;
+            font-weight: 700;
         }
         .header .subtitle {
-            color: #666;
-            font-size: 14px;
-        }
-        .info-box {
-            background-color: #E8F2FF;
-            border-left: 4px solid #007AFF;
-            padding: 15px 20px;
-            margin-bottom: 25px;
-            border-radius: 4px;
+            color: #888;
+            font-size: 13px;
         }
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
+            margin-top: 16px;
         }
         th {
-            background-color: #007AFF;
-            color: white;
-            padding: 15px;
+            background-color: #f5f5f5;
+            color: #1a1a1a;
+            padding: 10px 12px;
             text-align: left;
             font-weight: 600;
+            border-bottom: 2px solid #ddd;
         }
         td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #ddd;
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
         }
-        tr:hover {
-            background-color: #f8f9fa;
+        a {
+            color: #1a1a1a;
+            text-decoration: underline;
         }
-        .btn-view {
-            display: inline-block;
-            background-color: #007AFF;
-            color: white;
-            padding: 8px 20px;
-            text-decoration: none;
-            border-radius: 6px;
-            transition: background-color 0.3s;
-        }
-        .btn-view:hover {
-            background-color: #0051D5;
+        a:hover {
+            color: #555;
         }
         .footer {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-            text-align: center;
-            color: #888;
+            margin-top: 28px;
+            padding-top: 16px;
+            border-top: 1px solid #e0e0e0;
+            color: #aaa;
             font-size: 12px;
-        }
-        .stats {
-            display: flex;
-            justify-content: space-around;
-            margin: 20px 0;
-        }
-        .stat-item {
-            text-align: center;
-        }
-        .stat-number {
-            font-size: 32px;
-            font-weight: bold;
-            color: #007AFF;
-        }
-        .stat-label {
-            color: #666;
-            font-size: 14px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🇦🇺 ASX每日市场报告</h1>
-            <div class="subtitle">澳大利亚股市每日投资报告归档</div>
-        </div>
+    <div class="header">
+        <h1>ASX 市场简报</h1>
+        <div class="subtitle">历史报告归档 · 13 份报告</div>
+    </div>
 
-        <div class="info-box">
-            <strong>📊 关于本报告</strong><br>
-            本报告由AI自动生成，每日早上8点（AEST）更新。报告涵盖ASX市场概况、个股深度分析等内容。
-        </div>
-
-        <div class="stats">
-            <div class="stat-item">
-                <div class="stat-number">12</div>
-                <div class="stat-label">历史报告数</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">每日</div>
-                <div class="stat-label">更新频率</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">08:00</div>
-                <div class="stat-label">发布时间 (AEST)</div>
-            </div>
-        </div>
-
-        <h2 style="color: #007AFF; margin-top: 30px;">📁 历史报告归档</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>日期</th>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                
+    <table>
+        <thead>
+            <tr>
+                <th>日期</th>
+                <th>查看</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+        <tr>
+            <td>2026年03月06日 周五</td>
+            <td><a href="asx_report_20260306.html">查看</a></td>
+        </tr>
+        
         <tr>
             <td>2026年03月05日 周四</td>
-            <td><a href="asx_report_20260305.html" class="btn-view">查看报告</a></td>
-        </tr>
-        
-        <tr>
-            <td>2026年03月02日 周一</td>
-            <td><a href="asx_report_20260302.html" class="btn-view">查看报告</a></td>
-        </tr>
-        
-        <tr>
-            <td>2026年03月01日 周日</td>
-            <td><a href="asx_report_20260301.html" class="btn-view">查看报告</a></td>
+            <td><a href="asx_report_20260305.html">查看</a></td>
         </tr>
         
         <tr>
             <td>2026年03月03日 周二</td>
-            <td><a href="asx_report_20260303.html" class="btn-view">查看报告</a></td>
+            <td><a href="asx_report_20260303.html">查看</a></td>
         </tr>
         
         <tr>
             <td>2026年03月04日 周三</td>
-            <td><a href="asx_report_20260304.html" class="btn-view">查看报告</a></td>
+            <td><a href="asx_report_20260304.html">查看</a></td>
         </tr>
         
         <tr>
-            <td>2026年02月26日 周四</td>
-            <td><a href="asx_report_20260226.html" class="btn-view">查看报告</a></td>
+            <td>2026年03月02日 周一</td>
+            <td><a href="asx_report_20260302.html">查看</a></td>
         </tr>
         
         <tr>
             <td>2026年02月27日 周五</td>
-            <td><a href="asx_report_20260227.html" class="btn-view">查看报告</a></td>
+            <td><a href="asx_report_20260227.html">查看</a></td>
+        </tr>
+        
+        <tr>
+            <td>2026年03月01日 周日</td>
+            <td><a href="asx_report_20260301.html">查看</a></td>
         </tr>
         
         <tr>
             <td>2026年02月28日 周六</td>
-            <td><a href="asx_report_20260228.html" class="btn-view">查看报告</a></td>
+            <td><a href="asx_report_20260228.html">查看</a></td>
         </tr>
         
         <tr>
             <td>2026年02月25日 周三</td>
-            <td><a href="asx_report_20260225.html" class="btn-view">查看报告</a></td>
+            <td><a href="asx_report_20260225.html">查看</a></td>
+        </tr>
+        
+        <tr>
+            <td>2026年02月26日 周四</td>
+            <td><a href="asx_report_20260226.html">查看</a></td>
         </tr>
         
         <tr>
             <td>2026年02月23日 周一</td>
-            <td><a href="asx_report_20260223.html" class="btn-view">查看报告</a></td>
+            <td><a href="asx_report_20260223.html">查看</a></td>
         </tr>
         
         <tr>
             <td>2026年02月24日 周二</td>
-            <td><a href="asx_report_20260224.html" class="btn-view">查看报告</a></td>
+            <td><a href="asx_report_20260224.html">查看</a></td>
         </tr>
         
         <tr>
             <td>2026年02月22日 周日</td>
-            <td><a href="asx_report_20260222.html" class="btn-view">查看报告</a></td>
+            <td><a href="asx_report_20260222.html">查看</a></td>
         </tr>
         
-            </tbody>
-        </table>
+        </tbody>
+    </table>
 
-        <div class="footer">
-            <p>本报告由AI自动生成，仅供参考，不构成投资建议。</p>
-            <p>股市有风险，投资需谨慎。请咨询专业投资顾问做出决策。</p>
-            <p>最后更新: 2026-03-05 22:10:43 AEST</p>
-        </div>
+    <div class="footer">
+        AI自动生成，仅供参考。<br>
+        最后更新: 2026-03-06 08:43
     </div>
 </body>
 </html>
