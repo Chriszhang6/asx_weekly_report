@@ -14,6 +14,7 @@ from email.mime.multipart import MIMEMultipart
 from email.header import Header
 from datetime import datetime, timedelta
 from pathlib import Path
+import time
 import requests
 from urllib.parse import quote
 
@@ -142,7 +143,13 @@ def get_real_time_data() -> str:
 {reason_data}
 """)
 
-        # ========== 3. 获取市场新闻 ==========
+        # ========== 3. 获取主要个股数据 ==========
+        print("    📊 获取主要个股数据...")
+        stock_data = _fetch_key_stocks_data()
+        if stock_data:
+            context_parts.append(stock_data)
+
+        # ========== 4. 获取市场新闻 ==========
         print("    📰 获取市场新闻...")
         news_data = _fetch_market_news()
         if news_data:
@@ -271,6 +278,64 @@ def _fetch_yahoo_finance_data(ticker_symbol: str) -> str:
 
     except Exception as e:
         return f"⚠️ 获取失败: {str(e)}"
+
+
+def _fetch_key_stocks_data() -> str:
+    """
+    获取ASX主要权重股的实时价格数据
+    """
+    # ASX 200 主要权重股和热门股
+    key_stocks = [
+        ("BHP.AX", "BHP Group"),
+        ("CBA.AX", "Commonwealth Bank"),
+        ("CSL.AX", "CSL Ltd"),
+        ("NAB.AX", "National Australia Bank"),
+        ("WBC.AX", "Westpac"),
+        ("ANZ.AX", "ANZ Group"),
+        ("WES.AX", "Wesfarmers"),
+        ("WOW.AX", "Woolworths"),
+        ("RIO.AX", "Rio Tinto"),
+        ("FMG.AX", "Fortescue Metals"),
+        ("MQG.AX", "Macquarie Group"),
+        ("TLS.AX", "Telstra"),
+        ("WDS.AX", "Woodside Energy"),
+        ("ALL.AX", "Aristocrat Leisure"),
+        ("QAN.AX", "Qantas Airways"),
+    ]
+
+    stock_lines = []
+    for ticker, name in key_stocks:
+        try:
+            data = _fetch_yahoo_finance_data(ticker)
+            if data and "⚠️" not in data:
+                # 提取价格和涨跌幅
+                price_match = re.search(r'当前价格.*?([\d.]+)', data)
+                change_match = re.search(r'涨跌额.*?([-+\d.]+)', data)
+                pct_match = re.search(r'涨跌幅.*?([-+\d.]+)%', data)
+
+                price = price_match.group(1) if price_match else "N/A"
+                change = change_match.group(1) if change_match else ""
+                pct = pct_match.group(1) if pct_match else ""
+
+                code = ticker.replace(".AX", "")
+                line = f"- **{code} ({name})**: ${price}"
+                if pct:
+                    line += f", 涨跌幅 {pct}%"
+                if change:
+                    line += f" ({change})"
+                stock_lines.append(line)
+                print(f"        ✅ {code}: ${price} ({pct}%)")
+            else:
+                print(f"        ⚠️ {ticker}: 数据获取失败")
+        except Exception as e:
+            print(f"        ⚠️ {ticker}: {e}")
+
+        # 小延迟避免被限流
+        time.sleep(0.3)
+
+    if stock_lines:
+        return "## 📊 主要个股表现\n\n" + "\n".join(stock_lines) + "\n"
+    return ""
 
 
 def _fetch_market_news() -> str:
@@ -487,7 +552,7 @@ def call_zai_api(prompt: str, context: str = "", model: str = "glm-4.7") -> str:
 
 {prompt}
 
-请基于上述实时数据进行分析。如果某些信息在背景数据中没有提到，请说明"根据现有信息无法确认"。
+请基于上述实时数据进行分析。如果背景数据中缺少某些信息，请直接跳过该部分，不要提及数据缺失。绝对不要写"根据现有信息无法确认"之类的话。
 """
 
     headers = {
