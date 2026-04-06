@@ -1,0 +1,17 @@
+ASX 市场简报
+2026年04月06日
+
+--- 市场概况 ---
+API调用失败: HTTPSConnectionPool(host='api.z.ai', port=443): Max retries exceeded with url: /api/anthropic/v1/messages (Caused by NewConnectionError("HTTPSConnection(host='api.z.ai', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
+
+--- 值得关注 ---
+API调用失败: HTTPSConnectionPool(host='api.z.ai', port=443): Max retries exceeded with url: /api/anthropic/v1/messages (Caused by NewConnectionError("HTTPSConnection(host='api.z.ai', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
+
+--- 近期事件 ---
+API调用失败: HTTPSConnectionPool(host='api.z.ai', port=443): Max retries exceeded with url: /api/anthropic/v1/messages (Caused by NewConnectionError("HTTPSConnection(host='api.z.ai', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
+
+--- 风险提示 ---
+API调用失败: HTTPSConnectionPool(host='api.z.ai', port=443): Max retries exceeded with url: /api/anthropic/v1/messages (Caused by NewConnectionError("HTTPSConnection(host='api.z.ai', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
+
+---
+AI自动生成，仅供参考，不构成投资建议。
