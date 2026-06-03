@@ -1,8 +1,8 @@
-# ASX每日市场报告自动化系统 | ASX Daily Market Report Automation System
+# ASX每周市场报告自动化系统 | ASX Weekly Market Report Automation System
 
-> 每天早上8点（AEST）自动生成并发送澳洲股市(ASX)每日市场报告到您的邮箱，并发布到GitHub Pages
+> 每周六早上8点（AEST）自动生成并发送澳洲股市(ASX)周报到您的邮箱，并发布到GitHub Pages
 >
-> Automatically generate and send ASX (Australian Securities Exchange) daily market reports to your email every day at 8 AM (AEST) and publish to GitHub Pages
+> Automatically generate and send ASX (Australian Securities Exchange) weekly market reports to your email every Saturday at 8 AM (AEST) and publish to GitHub Pages
 
 ## 功能特点 | Features
 
@@ -134,7 +134,7 @@ git push -u origin main
 ├── README.md                       # 说明文档 | Documentation
 ├── docs/                           # GitHub Pages输出目录 | GitHub Pages output directory
 │   ├── index.html                  # 报告归档首页 | Report archive index
-│   └── asx_report_YYYYMMDD.html   # 每日报告HTML | Daily report HTML
+│   └── asx_report_YYYYMMDD.html   # 每周报告HTML | Weekly report HTML
 └── logs/                           # 运行日志 | Run logs
     └── cron.log
 ```
@@ -181,7 +181,7 @@ RECIPIENT_EMAIL=
 ```
 https://YOUR_USERNAME.github.io/YOUR_REPO/
 ├── index.html                     # 报告归档首页 | Report archive index
-└── asx_report_20260221.html       # 每日报告 | Daily report
+└── asx_report_20260221.html       # 每周报告 | Weekly report
 ```
 
 ## 定时任务 | Scheduled Tasks
@@ -196,11 +196,11 @@ crontab -l
 crontab -e
 ```
 
-默认配置：每天早上8:00运行 | Default: Run every day at 8:00 AM
+默认配置：每周六早上8:00运行 | Default: Run every Saturday at 8:00 AM
 
 ### GitHub Actions
 
-默认配置：每天UTC 22:00（澳大利亚东部标准时间早上8:00）| Default: Every day at 22:00 UTC (8:00 AM AEST)
+默认配置：每周五UTC 22:00（澳大利亚东部标准时间周六早上8:00）| Default: Every Friday at 22:00 UTC (Saturday 8:00 AM AEST)
 
 可在 `.github/workflows/asx-weekly-report.yml` 中修改时间。| Modify the time in `.github/workflows/asx-weekly-report.yml`
 
@@ -233,7 +233,7 @@ crontab -e
 **本地Cron | Local Cron:**
 ```bash
 crontab -e
-# 将 "0 8 * * *" 改为您想要的时间 | Change "0 8 * * *" to your desired time
+# 将 "0 8 * * 6" 改为您想要的时间 | Change "0 8 * * 6" to your desired time
 # 格式: 分 时 日 月 周 | Format: minute hour day month weekday
 ```
 

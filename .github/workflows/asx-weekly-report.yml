@@ -15,10 +15,10 @@
 name: ASX Weekly Investment Report
 
 on:
-  # 每天UTC 22:00运行 = 澳大利亚东部标准时间(AEST)早上8:00
+  # 每周五UTC 22:00运行 = 澳大利亚东部标准时间(AEST)周六早上8:00
   # 如需调整时间，请修改 cron 表达式
   schedule:
-    - cron: '0 22 * * *'
+    - cron: '0 22 * * 5'
 
   # 允许手动触发
   workflow_dispatch:

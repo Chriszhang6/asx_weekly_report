@@ -1,12 +1,12 @@
-# ASX Daily Market Report - AI Assistant Guide
+# ASX Weekly Market Report - AI Assistant Guide
 
 ## Project Overview
 
-This is an automated ASX (Australian Securities Exchange) daily market report system that:
+This is an automated ASX (Australian Securities Exchange) weekly market report system that:
 - Fetches real-time ASX market data from Yahoo Finance
 - Generates AI-powered market analysis using Z.ai GLM API
 - Sends reports via email and publishes to GitHub Pages
-- Runs daily at 8:00 AM AEST (via cron or GitHub Actions)
+- Runs every Saturday at 8:00 AM AEST (via cron or GitHub Actions)
 
 **Current Report Structure:**
 1. 市场概况 (Market Overview) - ASX 200 index performance with trend chart
@@ -106,7 +106,7 @@ asx_weekly_report/
 │   └── asx-weekly-report.yml # GitHub Actions
 ├── docs/                      # GitHub Pages output
 │   ├── index.html             # Archive index
-│   └── asx_report_*.html      # Daily reports
+│   └── asx_report_*.html      # Weekly reports
 └── logs/                      # Run logs
 ```
 
