@@ -21,6 +21,8 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+# Keep the dependency list aligned with the currently supported runtime libraries in README/workflow.
+DEPS="requests html2text matplotlib"
 
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,8 +50,8 @@ if ! command -v pip3 &> /dev/null; then
     python3 -m ensurepip --upgrade 2>/dev/null || true
 fi
 
-echo "正在安装依赖: requests, html2text, matplotlib"
-pip3 install --user requests html2text matplotlib 2>/dev/null || pip3 install requests html2text matplotlib
+echo "正在安装依赖: $DEPS"
+pip3 install --user $DEPS 2>/dev/null || pip3 install $DEPS
 
 echo -e "${GREEN}✓${NC} 依赖安装完成"
 

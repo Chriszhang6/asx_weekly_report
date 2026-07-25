@@ -88,6 +88,18 @@ EVENT_RULES = [
     {"name": "澳大利亚月度CPI指标", "weekday": 2, "occurrence": -1, "impact": "通胀路径若偏离预期，市场会重新定价利率路径"},
 ]
 
+MARKET_OVERVIEW_TEMPLATE = (
+    "ASX 200最新报 {price} 点，单日 {daily_change}；过去5个交易日 {weekly_return}，过去1个月 {monthly_return}。\n\n"
+    "规则判断当前市场处于“{regime}”状态；近{volatility_window}个交易日波动率约 {volatility:.2f}%，{volume_text}。\n\n"
+    "本周主要驱动：{reason_text}。"
+)
+
+RECENT_VOLUME_WINDOW = 5
+COMPARE_VOLUME_WINDOW = 10
+STOCK_FETCH_DELAY_SECONDS = 0.3
+EARNINGS_REPORTING_MONTHS = (1, 2, 4, 7, 10)
+EARNINGS_LOOKAHEAD_DAYS = 7
+
 
 def _format_pct(value: float | None) -> str:
     """格式化百分比数值"""
@@ -313,6 +325,7 @@ def _fetch_yahoo_finance_quote_data(ticker_symbol: str, company_name: str = "") 
         quote["error"] = str(e)
 
     if quote["price"] is None:
+        # Fallback to the chart endpoint when the quote page omits parseable fields.
         history = _fetch_yahoo_chart_data(ticker_symbol, period_days=10)
         if history:
             quote["price"] = history[-1]["close"]
@@ -423,7 +436,8 @@ def _fetch_key_stock_quotes() -> list[dict]:
     for ticker, name in KEY_STOCKS:
         quote = _fetch_yahoo_finance_quote_data(ticker, name)
         quotes.append(quote)
-        time.sleep(0.3)
+        # Sequential fetches are slower, but they reduce the chance of Yahoo Finance rate limiting.
+        time.sleep(STOCK_FETCH_DELAY_SECONDS)
     return quotes
 
 
@@ -600,16 +614,21 @@ def _build_market_snapshot() -> dict:
             daily_returns.append(change_pct)
 
     last_close = closes[-1] if closes else index_quote["price"]
-    weekly_base = closes[-6] if len(closes) >= 6 else (closes[0] if closes else index_quote["prev_close"])
-    monthly_base = closes[0] if closes else index_quote["prev_close"]
-    weekly_return = _safe_pct_change(last_close, weekly_base)
-    monthly_return = _safe_pct_change(last_close, monthly_base)
-    volatility = statistics.pstdev(daily_returns[-10:]) if len(daily_returns) >= 2 else 0.0
+    weekly_return = _safe_pct_change(last_close, closes[-6]) if len(closes) >= 6 else None
+    monthly_return = _safe_pct_change(last_close, closes[0]) if len(closes) >= 2 else None
+    volatility_window = min(len(daily_returns), 10)
+    volatility = statistics.pstdev(daily_returns[-volatility_window:]) if volatility_window >= 2 else 0.0
 
     recent_volumes = [point["volume"] for point in history if point["volume"] is not None]
     current_volume = recent_volumes[-1] if recent_volumes else index_quote["volume"]
-    recent_avg_volume = statistics.mean(recent_volumes[-5:]) if len(recent_volumes) >= 5 else current_volume
-    previous_avg_volume = statistics.mean(recent_volumes[-10:-5]) if len(recent_volumes) >= 10 else recent_avg_volume
+    recent_avg_volume = (
+        statistics.mean(recent_volumes[-RECENT_VOLUME_WINDOW:])
+        if len(recent_volumes) >= RECENT_VOLUME_WINDOW else current_volume
+    )
+    previous_avg_volume = (
+        statistics.mean(recent_volumes[-COMPARE_VOLUME_WINDOW:-RECENT_VOLUME_WINDOW])
+        if len(recent_volumes) >= COMPARE_VOLUME_WINDOW else recent_avg_volume
+    )
     volume_change_pct = _safe_pct_change(recent_avg_volume, previous_avg_volume)
 
     return {
@@ -621,6 +640,7 @@ def _build_market_snapshot() -> dict:
         "weekly_return": weekly_return,
         "monthly_return": monthly_return,
         "volatility": volatility,
+        "volatility_window": volatility_window,
         "current_volume": current_volume,
         "recent_avg_volume": recent_avg_volume,
         "volume_change_pct": volume_change_pct,
@@ -668,6 +688,34 @@ def _stock_news_hits(stock: dict, news_items: list[str]) -> int:
     return mentions
 
 
+def _stock_change_pct_key(stock: dict, default: float) -> float:
+    """为排序提供稳定的涨跌幅键值"""
+    change_pct = stock.get("change_pct")
+    return change_pct if change_pct is not None else default
+
+
+def _iter_event_months(start_date, count: int = 2) -> list[tuple[int, int]]:
+    """按月递增返回 (year, month)，避免跨年时重复编写月份换算逻辑"""
+    months = []
+    year = start_date.year
+    month = start_date.month
+    for _ in range(count):
+        months.append((year, month))
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+    return months
+
+
+def _deduplicate_events_by_date_and_name(events: list[tuple]) -> list[tuple]:
+    """按 (日期, 名称) 去重，并保留排序后的首个事件"""
+    return list({
+        (event[0], event[1]): event
+        for event in events
+    }.values())
+
+
 def _rank_focus_stocks(snapshot: dict, limit: int = 3) -> list[dict]:
     """按涨跌幅、新闻命中和量化异常挑选重点个股"""
     ranked = []
@@ -678,9 +726,9 @@ def _rank_focus_stocks(snapshot: dict, limit: int = 3) -> list[dict]:
     for stock in snapshot["key_stocks"]:
         change_pct = stock.get("change_pct") or 0
         news_hits = _stock_news_hits(stock, snapshot["news_items"])
-        volume_score = 1 if median_volume and (stock.get("volume") or 0) >= median_volume else 0
+        high_volume_flag = 1 if median_volume and (stock.get("volume") or 0) >= median_volume else 0
         relative_score = 1 if change_pct * market_return < 0 else 0
-        score = abs(change_pct) * 2 + news_hits * 1.5 + volume_score + relative_score
+        score = abs(change_pct) * 2 + news_hits * 1.5 + high_volume_flag + relative_score
         ranked.append((score, abs(change_pct), stock["code"], news_hits, stock))
 
     ranked.sort(key=lambda item: (-item[0], -item[1], item[2]))
@@ -696,20 +744,36 @@ def _generate_market_overview(snapshot: dict) -> str:
     volatility = snapshot.get("volatility") or 0
     volume_text = _describe_volume_change(snapshot.get("volume_change_pct"))
 
-    top_gainer = max(snapshot["key_stocks"], key=lambda stock: stock.get("change_pct") or float("-inf"), default=None)
-    top_loser = min(snapshot["key_stocks"], key=lambda stock: stock.get("change_pct") or float("inf"), default=None)
+    top_gainer = max(
+        snapshot["key_stocks"],
+        key=lambda stock: _stock_change_pct_key(stock, float("-inf")),
+        default=None
+    )
+    top_loser = min(
+        snapshot["key_stocks"],
+        key=lambda stock: _stock_change_pct_key(stock, float("inf")),
+        default=None
+    )
     reason_text = "；".join(snapshot["reason_items"][:2]) if snapshot["reason_items"] else "本周驱动主要来自指数涨跌与权重股轮动"
+    volatility_window = snapshot.get("volatility_window") or 0
 
-    lines = [
-        f"ASX 200最新报 {_format_price(index_quote['price'])} 点，单日 {_format_pct(index_quote['change_pct'])}；过去5个交易日 {_format_pct(weekly_return)}，过去1个月 {_format_pct(monthly_return)}。",
-        f"规则判断当前市场处于“{regime}”状态；近10个交易日波动率约 {volatility:.2f}%，{volume_text}。",
-        f"本周主要驱动：{reason_text}。",
-    ]
+    lines = [MARKET_OVERVIEW_TEMPLATE.format(
+        price=_format_price(index_quote['price']),
+        daily_change=_format_pct(index_quote['change_pct']),
+        weekly_return=_format_pct(weekly_return),
+        monthly_return=_format_pct(monthly_return),
+        regime=regime,
+        volatility_window=volatility_window,
+        volatility=volatility,
+        volume_text=volume_text,
+        reason_text=reason_text,
+    )]
 
     notable_moves = []
     if top_gainer and top_gainer.get("change_pct") is not None:
         notable_moves.append(f"{top_gainer['code']} 领涨 {_format_pct(top_gainer['change_pct'])}")
-    if top_loser and top_loser.get("change_pct") is not None and (not top_gainer or top_loser["code"] != top_gainer["code"]):
+    is_different_stock = not top_gainer or top_loser["code"] != top_gainer["code"]
+    if top_loser and top_loser.get("change_pct") is not None and is_different_stock:
         notable_moves.append(f"{top_loser['code']} 领跌 {_format_pct(top_loser['change_pct'])}")
     if notable_moves:
         lines.append("值得注意的个股异动：" + "，".join(notable_moves) + "。")
@@ -747,17 +811,12 @@ def _generate_stock_analysis(snapshot: dict) -> str:
 
 
 def _generate_investment_calendar(snapshot: dict, lookahead_days: int = 14) -> str:
-    """基于固定事件规则生成未来两周日历"""
+    """基于固定事件规则生成未来两周日历，包括 ASX 常见财报季月份提示"""
     today = snapshot["generated_at"].date()
     window_end = today + timedelta(days=lookahead_days)
     events = []
 
-    for month_offset in range(2):
-        month_anchor = today.replace(day=1)
-        probe_month = month_anchor.month + month_offset
-        probe_year = month_anchor.year + ((probe_month - 1) // 12)
-        probe_month = ((probe_month - 1) % 12) + 1
-
+    for probe_year, probe_month in _iter_event_months(today):
         for rule in EVENT_RULES:
             event_dt = _nth_weekday_of_month(probe_year, probe_month, rule["weekday"], rule["occurrence"])
             if not event_dt:
@@ -766,18 +825,19 @@ def _generate_investment_calendar(snapshot: dict, lookahead_days: int = 14) -> s
             if today <= event_date <= window_end:
                 events.append((event_date, rule["name"], rule["impact"]))
 
-    if today.month in (1, 2, 4, 7, 10):
-        earnings_date = today + timedelta(days=7)
+    if today.month in EARNINGS_REPORTING_MONTHS:
+        earnings_date = today + timedelta(days=EARNINGS_LOOKAHEAD_DAYS)
         if earnings_date <= window_end:
             events.append((earnings_date, "财报与经营更新窗口", "资源、银行与消费龙头更容易出现业绩驱动波动"))
 
-    events = sorted(set(events), key=lambda item: item[0])[:8]
-    if not events:
+    deduplicated_events = _deduplicate_events_by_date_and_name(sorted(events, key=lambda item: item[0]))
+
+    if not deduplicated_events:
         return "- **未来两周** - 暂无固定高频宏观事件，重点关注指数波动和权重股公告。"
 
     return "\n".join(
         f"- **{event_date.month}月{event_date.day}日** - {name}，{impact}"
-        for event_date, name, impact in events
+        for event_date, name, impact in deduplicated_events[:8]
     )
 
 
