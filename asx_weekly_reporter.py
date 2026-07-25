@@ -6,9 +6,9 @@ ASX Weekly Investment Report Generator
 """
 
 import os
-import json
 import smtplib
 import re
+import statistics
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
@@ -16,21 +16,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import time
 import requests
-from urllib.parse import quote
-
-# 尝试导入yfinance，用于获取真实的股市数据
-try:
-    import yfinance as yf
-    YFINANCE_AVAILABLE = True
-except ImportError:
-    YFINANCE_AVAILABLE = False
-    print("警告: yfinance未安装，将使用简化的市场数据。请运行: pip install yfinance")
 
 # ============== 配置区域 ==============
 # 从环境变量读取配置
 GMAIL_ADDRESS = os.getenv('GMAIL_ADDRESS', '')
 GMAIL_APP_PASSWORD = os.getenv('GMAIL_APP_PASSWORD', '')
-ZAI_API_KEY = os.getenv('ZAI_API_KEY', '')
 RECIPIENT_EMAIL = os.getenv('RECIPIENT_EMAIL', GMAIL_ADDRESS)  # 默认发送给自己
 
 # 清理特殊字符（非断空格等）
@@ -43,16 +33,119 @@ def clean_string(s: str) -> str:
 
 GMAIL_APP_PASSWORD = clean_string(GMAIL_APP_PASSWORD)
 
-# 输出目录 - GitHub Actions使用docs目录，本地使用Downloads目录
-# 检测是否在GitHub Actions环境中运行
-if os.getenv('GITHUB_ACTIONS') == 'true':
+# 输出目录 - GitHub Actions使用docs目录，本地使用Downloads目录，可通过环境变量覆盖
+output_dir_env = os.getenv('OUTPUT_DIR')
+if output_dir_env:
+    OUTPUT_DIR = Path(output_dir_env)
+elif os.getenv('GITHUB_ACTIONS') == 'true':
     OUTPUT_DIR = Path('./docs')
 else:
     OUTPUT_DIR = Path.home() / 'Downloads' / 'asx_weekly_report'
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
 
-# Z.ai GLM API配置 - 使用 Anthropic 兼容端点
-ZAI_API_URL = "https://api.z.ai/api/anthropic/v1/messages"
+KEY_STOCKS = [
+    ("BHP.AX", "BHP Group"),
+    ("CBA.AX", "Commonwealth Bank"),
+    ("CSL.AX", "CSL Ltd"),
+    ("NAB.AX", "National Australia Bank"),
+    ("WBC.AX", "Westpac"),
+    ("ANZ.AX", "ANZ Group"),
+    ("WES.AX", "Wesfarmers"),
+    ("WOW.AX", "Woolworths"),
+    ("RIO.AX", "Rio Tinto"),
+    ("FMG.AX", "Fortescue Metals"),
+    ("MQG.AX", "Macquarie Group"),
+    ("TLS.AX", "Telstra"),
+    ("WDS.AX", "Woodside Energy"),
+    ("ALL.AX", "Aristocrat Leisure"),
+    ("QAN.AX", "Qantas Airways"),
+]
+
+STOCK_KEYWORDS = {
+    "BHP": ["bhp", "iron ore", "china", "miner", "mining"],
+    "RIO": ["rio", "iron ore", "china", "miner", "mining"],
+    "FMG": ["fortescue", "iron ore", "china", "miner", "mining"],
+    "CBA": ["cba", "commonwealth bank", "bank", "banks", "rate", "mortgage"],
+    "NAB": ["nab", "national australia bank", "bank", "banks", "rate", "mortgage"],
+    "WBC": ["wbc", "westpac", "bank", "banks", "rate", "mortgage"],
+    "ANZ": ["anz", "bank", "banks", "rate", "mortgage"],
+    "MQG": ["mqg", "macquarie", "bank", "markets", "deal"],
+    "CSL": ["csl", "health", "healthcare", "defensive"],
+    "WES": ["wes", "wesfarmers", "consumer", "retail", "spending"],
+    "WOW": ["wow", "woolworths", "consumer", "retail", "spending"],
+    "TLS": ["tls", "telstra", "telecom", "yield"],
+    "WDS": ["wds", "woodside", "oil", "energy", "lng"],
+    "ALL": ["all", "aristocrat", "gaming", "consumer"],
+    "QAN": ["qan", "qantas", "travel", "consumer"],
+}
+
+EVENT_RULES = [
+    {"name": "RBA利率决议", "weekday": 1, "occurrence": 1, "impact": "市场将关注政策措辞对银行股和澳元的影响"},
+    {"name": "NAB商业景气调查", "weekday": 1, "occurrence": 2, "impact": "反映企业投资与需求强弱，常影响周期股预期"},
+    {"name": "Westpac消费者信心指数", "weekday": 2, "occurrence": 2, "impact": "可作为零售和可选消费板块的先行温度计"},
+    {"name": "澳大利亚就业数据", "weekday": 3, "occurrence": 3, "impact": "就业与工资压力会直接影响降息预期"},
+    {"name": "RBA会议纪要", "weekday": 1, "occurrence": 3, "impact": "若措辞偏鹰派，利率敏感板块波动可能放大"},
+    {"name": "澳大利亚月度CPI指标", "weekday": 2, "occurrence": -1, "impact": "通胀路径若偏离预期，市场会重新定价利率路径"},
+]
+
+
+def _format_pct(value: float | None) -> str:
+    """格式化百分比数值"""
+    if value is None:
+        return "N/A"
+    return f"{value:+.2f}%"
+
+
+def _format_price(value: float | None) -> str:
+    """格式化价格数值"""
+    if value is None:
+        return "N/A"
+    return f"{value:.2f}"
+
+
+def _safe_pct_change(new_value: float | None, old_value: float | None) -> float | None:
+    """计算百分比变化"""
+    if new_value is None or old_value in (None, 0):
+        return None
+    return ((new_value - old_value) / old_value) * 100
+
+
+def _nth_weekday_of_month(year: int, month: int, weekday: int, occurrence: int) -> datetime | None:
+    """获取某月第N个工作日；occurrence=-1 表示最后一个"""
+    first_day = datetime(year, month, 1)
+    dates = []
+    current = first_day
+    while current.month == month:
+        if current.weekday() == weekday:
+            dates.append(current)
+        current += timedelta(days=1)
+
+    if not dates:
+        return None
+    if occurrence == -1:
+        return dates[-1]
+    index = occurrence - 1
+    if 0 <= index < len(dates):
+        return dates[index]
+    return None
+
+
+def _extract_lines_by_keywords(content: str, keywords: list[str], limit: int) -> list[str]:
+    """从文本中提取包含关键词的行"""
+    extracted = []
+    for line in content.split('\n'):
+        text = line.strip()
+        if not (20 < len(text) < 200):
+            continue
+        if any(skip in text for skip in ['MENU', 'Skip to', 'Login', 'Subscribe', '***', '---', '|||']):
+            continue
+        text_lower = text.lower()
+        if any(keyword.lower() in text_lower for keyword in keywords):
+            if text not in extracted:
+                extracted.append(text)
+        if len(extracted) >= limit:
+            break
+    return extracted
 
 
 # ============== 实时数据获取函数 ==============
@@ -166,219 +259,210 @@ def get_real_time_data() -> str:
         return _get_real_time_data_from_web()
 
 
-def _fetch_yahoo_finance_data(ticker_symbol: str) -> str:
+def _fetch_yahoo_finance_quote_data(ticker_symbol: str, company_name: str = "") -> dict:
     """
-    从Yahoo Finance HTML页面抓取股票/指数数据
-
-    Args:
-        ticker_symbol: 股票代码，如 "^AXJO" 或 "BHP.AX"
-
-    Returns:
-        格式化的股票数据文本
+    从Yahoo Finance HTML页面抓取股票/指数结构化数据
     """
+    quote = {
+        "ticker": ticker_symbol,
+        "code": ticker_symbol.replace("%5E", "").replace("^", "").replace(".AX", ""),
+        "name": company_name or ticker_symbol.replace(".AX", ""),
+        "price": None,
+        "change": None,
+        "change_pct": None,
+        "prev_close": None,
+        "day_high": None,
+        "day_low": None,
+        "volume": None,
+        "error": "",
+    }
+
     try:
-        # 构建Yahoo Finance URL
-        # 对于带^的符号需要URL编码
-        if ticker_symbol.startswith('%5E'):
-            url = f"https://au.finance.yahoo.com/quote/{ticker_symbol}"
-        else:
-            url = f"https://au.finance.yahoo.com/quote/{ticker_symbol}"
-
+        url = f"https://au.finance.yahoo.com/quote/{ticker_symbol}"
         headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-AU,en;q=0.9',
         }
-
         response = requests.get(url, headers=headers, timeout=10)
-
-        if response.status_code != 200:
-            return f"⚠️ 无法获取数据 (HTTP {response.status_code})"
-
+        response.raise_for_status()
         content = response.text
 
-        # 从HTML中提取JSON数据
-        # Yahoo Finance在页面中嵌入了一个包含所有数据的JSON对象
-        import json
+        field_patterns = {
+            "price": r'"regularMarketPrice":\s*\{[^}]*"raw":\s*([-\d.]+)',
+            "prev_close": r'"regularMarketPreviousClose":\s*\{[^}]*"raw":\s*([-\d.]+)',
+            "change": r'"regularMarketChange":\s*\{[^}]*"raw":\s*([-\d.]+)',
+            "change_pct": r'"regularMarketChangePercent":\s*\{[^}]*"raw":\s*([-\d.]+)',
+            "day_high": r'"regularMarketDayHigh":\s*\{[^}]*"raw":\s*([-\d.]+)',
+            "day_low": r'"regularMarketDayLow":\s*\{[^}]*"raw":\s*([-\d.]+)',
+            "volume": r'"regularMarketVolume":\s*\{[^}]*"raw":\s*(\d+)',
+        }
 
-        # 尝试多种方式提取数据
-        patterns = [
-            r'"regularMarketPrice":\s*\{[^}]*"raw":\s*([\d.]+)',
-            r'"price":\s*([\d.]+)',
-        ]
+        for field_name, pattern in field_patterns.items():
+            match = re.search(pattern, content)
+            if not match:
+                continue
+            if field_name == "volume":
+                quote[field_name] = int(match.group(1))
+            else:
+                quote[field_name] = float(match.group(1))
 
-        price = None
-        change = None
-        change_pct = None
-        prev_close = None
-        high = None
-        low = None
-        volume = None
-
-        # 提取当前价格
-        price_match = re.search(r'"regularMarketPrice":\s*\{[^}]*"raw":\s*([\d.]+)', content)
-        if price_match:
-            price = float(price_match.group(1))
-
-        # 提取前收盘价
-        prev_match = re.search(r'"regularMarketPreviousClose":\s*\{[^}]*"raw":\s*([\d.]+)', content)
-        if prev_match:
-            prev_close = float(prev_match.group(1))
-
-        # 提取涨跌额
-        change_match = re.search(r'"regularMarketChange":\s*\{[^}]*"raw":\s*([-\d.]+)', content)
-        if change_match:
-            change = float(change_match.group(1))
-
-        # 提取涨跌幅
-        change_pct_match = re.search(r'"regularMarketChangePercent":\s*\{[^}]*"raw":\s*([-\d.]+)', content)
-        if change_pct_match:
-            change_pct = float(change_pct_match.group(1))
-
-        # 提取最高价
-        high_match = re.search(r'"regularMarketDayHigh":\s*\{[^}]*"raw":\s*([\d.]+)', content)
-        if high_match:
-            high = float(high_match.group(1))
-
-        # 提取最低价
-        low_match = re.search(r'"regularMarketDayLow":\s*\{[^}]*"raw":\s*([\d.]+)', content)
-        if low_match:
-            low = float(low_match.group(1))
-
-        # 提取成交量
-        vol_match = re.search(r'"regularMarketVolume":\s*\{[^}]*"raw":\s*(\d+)', content)
-        if vol_match:
-            volume = int(vol_match.group(1))
-
-        # 格式化输出
-        if price is not None:
-            result = f"- **当前价格**: {price:.2f}\n"
-
-            if change is not None:
-                result += f"- **涨跌额**: {change:+.2f}\n"
-
-            if change_pct is not None:
-                result += f"- **涨跌幅**: {change_pct:+.2f}%\n"
-
-            if prev_close is not None:
-                result += f"- **前收盘**: {prev_close:.2f}\n"
-
-            if high is not None:
-                result += f"- **今日最高**: {high:.2f}\n"
-
-            if low is not None:
-                result += f"- **今日最低**: {low:.2f}\n"
-
-            if volume is not None and volume > 0:
-                result += f"- **成交量**: {volume:,}\n"
-
-            return result
-        else:
-            return f"⚠️ 无法解析价格数据"
-
+        if quote["price"] is None:
+            quote["error"] = "无法解析价格数据"
     except Exception as e:
-        return f"⚠️ 获取失败: {str(e)}"
+        quote["error"] = str(e)
+
+    if quote["price"] is None:
+        history = _fetch_yahoo_chart_data(ticker_symbol, period_days=10)
+        if history:
+            quote["price"] = history[-1]["close"]
+            quote["prev_close"] = history[-2]["close"] if len(history) >= 2 else None
+            quote["change"] = (
+                quote["price"] - quote["prev_close"]
+                if quote["price"] is not None and quote["prev_close"] is not None
+                else None
+            )
+            quote["change_pct"] = _safe_pct_change(quote["price"], quote["prev_close"])
+            quote["day_high"] = quote["price"]
+            quote["day_low"] = quote["price"]
+            quote["volume"] = history[-1]["volume"]
+            quote["error"] = ""
+
+    return quote
+
+
+def _fetch_yahoo_finance_data(ticker_symbol: str) -> str:
+    """
+    从Yahoo Finance HTML页面抓取股票/指数数据并格式化输出
+    """
+    quote = _fetch_yahoo_finance_quote_data(ticker_symbol)
+    if quote["price"] is None:
+        return f"⚠️ 获取失败: {quote['error'] or '无法解析价格数据'}"
+
+    result = f"- **当前价格**: {_format_price(quote['price'])}\n"
+    if quote["change"] is not None:
+        result += f"- **涨跌额**: {quote['change']:+.2f}\n"
+    if quote["change_pct"] is not None:
+        result += f"- **涨跌幅**: {_format_pct(quote['change_pct'])}\n"
+    if quote["prev_close"] is not None:
+        result += f"- **前收盘**: {_format_price(quote['prev_close'])}\n"
+    if quote["day_high"] is not None:
+        result += f"- **今日最高**: {_format_price(quote['day_high'])}\n"
+    if quote["day_low"] is not None:
+        result += f"- **今日最低**: {_format_price(quote['day_low'])}\n"
+    if quote["volume"]:
+        result += f"- **成交量**: {quote['volume']:,}\n"
+    return result
+
+
+def _fetch_yahoo_chart_data(ticker_symbol: str, period_days: int = 40) -> list[dict]:
+    """获取Yahoo Finance历史行情数据"""
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=period_days)
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker_symbol}"
+        params = {
+            "period1": int(start_date.timestamp()),
+            "period2": int(end_date.timestamp()),
+            "interval": "1d",
+        }
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        }
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
+        payload = response.json()
+        result = payload.get("chart", {}).get("result", [])
+        if not result:
+            return []
+
+        timestamps = result[0].get("timestamp", [])
+        quote_data = result[0].get("indicators", {}).get("quote", [{}])[0]
+        closes = quote_data.get("close", [])
+        volumes = quote_data.get("volume", [])
+
+        history = []
+        for timestamp, close, volume in zip(timestamps, closes, volumes):
+            if close is None:
+                continue
+            history.append({
+                "date": datetime.fromtimestamp(timestamp),
+                "close": float(close),
+                "volume": int(volume) if volume is not None else None,
+            })
+        return history
+    except Exception:
+        return []
 
 
 def _fetch_key_stocks_data() -> str:
     """
     获取ASX主要权重股的实时价格数据
     """
-    # ASX 200 主要权重股和热门股
-    key_stocks = [
-        ("BHP.AX", "BHP Group"),
-        ("CBA.AX", "Commonwealth Bank"),
-        ("CSL.AX", "CSL Ltd"),
-        ("NAB.AX", "National Australia Bank"),
-        ("WBC.AX", "Westpac"),
-        ("ANZ.AX", "ANZ Group"),
-        ("WES.AX", "Wesfarmers"),
-        ("WOW.AX", "Woolworths"),
-        ("RIO.AX", "Rio Tinto"),
-        ("FMG.AX", "Fortescue Metals"),
-        ("MQG.AX", "Macquarie Group"),
-        ("TLS.AX", "Telstra"),
-        ("WDS.AX", "Woodside Energy"),
-        ("ALL.AX", "Aristocrat Leisure"),
-        ("QAN.AX", "Qantas Airways"),
-    ]
-
     stock_lines = []
-    for ticker, name in key_stocks:
-        try:
-            data = _fetch_yahoo_finance_data(ticker)
-            if data and "⚠️" not in data:
-                # 提取价格和涨跌幅
-                price_match = re.search(r'当前价格.*?([\d.]+)', data)
-                change_match = re.search(r'涨跌额.*?([-+\d.]+)', data)
-                pct_match = re.search(r'涨跌幅.*?([-+\d.]+)%', data)
-
-                price = price_match.group(1) if price_match else "N/A"
-                change = change_match.group(1) if change_match else ""
-                pct = pct_match.group(1) if pct_match else ""
-
-                code = ticker.replace(".AX", "")
-                line = f"- **{code} ({name})**: ${price}"
-                if pct:
-                    line += f", 涨跌幅 {pct}%"
-                if change:
-                    line += f" ({change})"
-                stock_lines.append(line)
-                print(f"        ✅ {code}: ${price} ({pct}%)")
-            else:
-                print(f"        ⚠️ {ticker}: 数据获取失败")
-        except Exception as e:
-            print(f"        ⚠️ {ticker}: {e}")
-
-        # 小延迟避免被限流
-        time.sleep(0.3)
+    for quote in _fetch_key_stock_quotes():
+        if quote["price"] is not None:
+            line = f"- **{quote['code']} ({quote['name']})**: ${_format_price(quote['price'])}"
+            if quote["change_pct"] is not None:
+                line += f", 涨跌幅 {_format_pct(quote['change_pct'])}"
+            if quote["change"] is not None:
+                line += f" ({quote['change']:+.2f})"
+            stock_lines.append(line)
+            print(f"        ✅ {quote['code']}: ${_format_price(quote['price'])} ({_format_pct(quote['change_pct'])})")
+        else:
+            print(f"        ⚠️ {quote['ticker']}: 数据获取失败")
 
     if stock_lines:
         return "## 📊 主要个股表现\n\n" + "\n".join(stock_lines) + "\n"
     return ""
 
 
+def _fetch_key_stock_quotes() -> list[dict]:
+    """获取核心股票列表的结构化行情"""
+    quotes = []
+    for ticker, name in KEY_STOCKS:
+        quote = _fetch_yahoo_finance_quote_data(ticker, name)
+        quotes.append(quote)
+        time.sleep(0.3)
+    return quotes
+
+
 def _fetch_market_news() -> str:
     """
     获取市场新闻（辅助函数）
     """
-    news_sources = [
-        {
-            "name": "ABC News - Business",
-            "url": "https://www.abc.net.au/news/business/",
-            "description": "ABC财经新闻"
-        },
-        {
-            "name": "AFR",
-            "url": "https://www.afr.com/",
-            "description": "澳洲金融评论"
-        }
-    ]
-
     news_parts = []
-    for source in news_sources:
-        content = fetch_url(source['url'])
-        if content and not content.startswith("获取网页失败"):
-            # 提取标题和新闻内容（更智能的提取）
-            lines = content.split('\n')
-            news_items = []
-            for i, line in enumerate(lines):
-                # 跳过导航和菜单
-                if any(skip in line for skip in ['MENU', 'Skip to', 'Login', 'Subscribe', '***', '---']):
-                    continue
-                # 保留看起来像新闻标题的行
-                if len(line.strip()) > 20 and len(line.strip()) < 200:
-                    if any(keyword in line.lower() for keyword in ['asx', 'market', 'share', 'stock', 'bank', 'bhp', 'inflation', 'rba']):
-                        news_items.append(line.strip())
-                if len(news_items) >= 5:  # 最多取5条
-                    break
-
-            if news_items:
-                news_parts.append(f"### {source['name']}\n\n" + "\n".join(f"- {item}" for item in news_items))
+    for source_name, news_items in _fetch_market_news_items().items():
+        if news_items:
+            news_parts.append(f"### {source_name}\n\n" + "\n".join(f"- {item}" for item in news_items))
 
     if news_parts:
         return "## 📰 市场新闻\n\n" + "\n\n".join(news_parts)
     return ""
+
+
+def _fetch_market_news_items() -> dict[str, list[str]]:
+    """抓取市场新闻标题列表"""
+    news_sources = [
+        {
+            "name": "ABC News - Business",
+            "url": "https://www.abc.net.au/news/business/",
+        },
+        {
+            "name": "AFR",
+            "url": "https://www.afr.com/",
+        }
+    ]
+    keywords = ['asx', 'market', 'share', 'stock', 'bank', 'bhp', 'inflation', 'rba', 'china', 'oil']
+
+    items = {}
+    for source in news_sources:
+        content = fetch_url(source['url'])
+        if content and not content.startswith("获取网页失败"):
+            extracted = _extract_lines_by_keywords(content, keywords, limit=5)
+            if extracted:
+                items[source["name"]] = extracted
+    return items
 
 
 def _fetch_market_reasons() -> str:
@@ -398,34 +482,40 @@ def _fetch_market_reasons() -> str:
         ("Reuters", "https://www.reuters.com/finance/"),
     ]
 
-    reasons = []
+    reasons = _fetch_market_reason_items(news_sources, keywords)
+    if reasons:
+        return "\n".join(f"- {r}" for r in reasons[:3])
+    return "暂无明确的市场变动原因"
 
+
+def _fetch_market_reason_items(
+    news_sources: list[tuple[str, str]] | None = None,
+    keywords: list[str] | None = None
+) -> list[str]:
+    """抓取与市场驱动相关的标题"""
+    news_sources = news_sources or [
+        ("ABC News - Business", "https://www.abc.net.au/news/business/"),
+        ("Reuters", "https://www.reuters.com/finance/"),
+    ]
+    keywords = keywords or [
+        "ASX 200", "ASX", "market", "index", "RBA", "interest rate",
+        "inflation", "earnings", "Wall Street", "US market",
+        "China", "iron ore", "Lithium", "banks"
+    ]
+
+    reasons = []
     for name, url in news_sources:
         try:
             content = fetch_url(url)
             if content and not content.startswith("获取网页失败"):
-                lines = content.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    # 跳过导航
-                    if any(skip in line for skip in ['MENU', 'Skip to', 'Login', 'Subscribe']):
-                        continue
-                    # 检查是否包含市场相关关键词
-                    if 20 < len(line) < 200:
-                        line_lower = line.lower()
-                        if any(keyword.lower() in line_lower for keyword in keywords):
-                            if line not in reasons:
-                                reasons.append(line)
-                                if len(reasons) >= 3:
-                                    break
+                for line in _extract_lines_by_keywords(content, keywords, limit=3):
+                    if line not in reasons:
+                        reasons.append(line)
                 if len(reasons) >= 3:
                     break
         except Exception as e:
             print(f"        ⚠️  {name} 获取失败: {e}")
-
-    if reasons:
-        return "\n".join(f"- {r}" for r in reasons[:3])
-    return "暂无明确的市场变动原因"
+    return reasons
 
 
 def _get_real_time_data_from_web() -> str:
@@ -481,7 +571,7 @@ def _get_real_time_data_from_web() -> str:
 
     # 如果抓取失败，返回空字符串
     if not context_parts:
-        print("    ⚠️  无法获取实时数据，将使用模型预训练知识")
+        print("    ⚠️  无法获取实时数据，将返回空结果")
         return ""
 
     result = "\n".join(context_parts)
@@ -490,103 +580,232 @@ def _get_real_time_data_from_web() -> str:
     return result
 
 
-def search_web_simulated(query: str) -> list:
-    """
-    模拟网络搜索（使用Google搜索通过serpapi或其他API）
+def _build_market_snapshot() -> dict:
+    """抓取并整理规则引擎所需的市场快照"""
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🌐 正在获取实时市场数据...")
+    index_quote = _fetch_yahoo_finance_quote_data("%5EAXJO", "S&P/ASX 200")
+    history = _fetch_yahoo_chart_data("%5EAXJO")
+    stock_quotes = [quote for quote in _fetch_key_stock_quotes() if quote["price"] is not None]
+    news_items_by_source = _fetch_market_news_items()
+    news_items = []
+    for items in news_items_by_source.values():
+        news_items.extend(items)
+    reasons = _fetch_market_reason_items()
 
-    注意：这是一个框架函数。要实现真正的搜索功能，你需要：
-    1. 注册搜索API服务（如SerpApi、Google Custom Search API）
-    2. 将API密钥添加到环境变量
-    3. 在此函数中调用API
+    closes = [point["close"] for point in history]
+    daily_returns = []
+    for previous, current in zip(closes, closes[1:]):
+        change_pct = _safe_pct_change(current, previous)
+        if change_pct is not None:
+            daily_returns.append(change_pct)
 
-    Args:
-        query: 搜索关键词
+    last_close = closes[-1] if closes else index_quote["price"]
+    weekly_base = closes[-6] if len(closes) >= 6 else (closes[0] if closes else index_quote["prev_close"])
+    monthly_base = closes[0] if closes else index_quote["prev_close"]
+    weekly_return = _safe_pct_change(last_close, weekly_base)
+    monthly_return = _safe_pct_change(last_close, monthly_base)
+    volatility = statistics.pstdev(daily_returns[-10:]) if len(daily_returns) >= 2 else 0.0
 
-    Returns:
-        搜索结果列表
-    """
-    # 这里是搜索API的框架
-    # 你可以集成以下服务：
-    #
-    # SerpApi: https://serpapi.com/google-search
-    # Google Custom Search API: https://developers.google.com/custom-search
-    # Bing Search API: https://www.microsoft.com/cognitive-services/bing-news-search-api
+    recent_volumes = [point["volume"] for point in history if point["volume"] is not None]
+    current_volume = recent_volumes[-1] if recent_volumes else index_quote["volume"]
+    recent_avg_volume = statistics.mean(recent_volumes[-5:]) if len(recent_volumes) >= 5 else current_volume
+    previous_avg_volume = statistics.mean(recent_volumes[-10:-5]) if len(recent_volumes) >= 10 else recent_avg_volume
+    volume_change_pct = _safe_pct_change(recent_avg_volume, previous_avg_volume)
 
-    # 示例代码（需要SERPAPI_KEY环境变量）:
-    # api_key = os.getenv('SERPAPI_KEY')
-    # if api_key:
-    #     url = f"https://serpapi.com/search?q={quote(query)}&location=Australia&hl=en&gl=au&api_key={api_key}"
-    #     response = requests.get(url)
-    #     return response.json().get('organic_results', [])
-
-    return []
-
-
-def call_zai_api(prompt: str, context: str = "", model: str = "glm-4.7") -> str:
-    """
-    调用Z.ai GLM API进行市场调研（使用Anthropic兼容端点）
-
-    Args:
-        prompt: 提示词
-        context: 实时数据上下文（可选）
-        model: 模型名称，默认使用glm-4.7
-
-    Returns:
-        API返回的响应文本
-    """
-    if not ZAI_API_KEY:
-        return "错误: 未设置ZAI_API_KEY环境变量"
-
-    # 如果有实时上下文，将其添加到prompt中
-    full_prompt = prompt
-    if context and context.strip():
-        full_prompt = f"""# 实时市场数据背景
-
-以下是最新的市场数据和分析（获取时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}）：
-
-{context}
-
----
-
-# 分析任务
-
-{prompt}
-
-请基于上述实时数据进行分析。如果背景数据中缺少某些信息，请直接跳过该部分，不要提及数据缺失。绝对不要写"根据现有信息无法确认"之类的话。
-"""
-
-    headers = {
-        "x-api-key": ZAI_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json"
+    return {
+        "asx200": index_quote,
+        "history": history,
+        "key_stocks": stock_quotes,
+        "news_items": news_items,
+        "reason_items": reasons,
+        "weekly_return": weekly_return,
+        "monthly_return": monthly_return,
+        "volatility": volatility,
+        "current_volume": current_volume,
+        "recent_avg_volume": recent_avg_volume,
+        "volume_change_pct": volume_change_pct,
+        "generated_at": datetime.now(),
     }
 
-    payload = {
-        "model": model,
-        "max_tokens": 4000,
-        "messages": [
-            {
-                "role": "user",
-                "content": full_prompt
-            }
-        ]
-    }
 
-    try:
-        response = requests.post(ZAI_API_URL, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        result = response.json()
+def _classify_market_regime(snapshot: dict) -> str:
+    """按阈值判断市场状态"""
+    weekly_return = snapshot.get("weekly_return") or 0
+    monthly_return = snapshot.get("monthly_return") or 0
+    volatility = snapshot.get("volatility") or 0
+    volume_change = snapshot.get("volume_change_pct") or 0
 
-        # 提取回复内容（Anthropic API格式）
-        if 'content' in result and len(result['content']) > 0:
-            return result['content'][0]['text']
+    if weekly_return >= 1.5 and monthly_return >= 3.0 and volume_change >= 5:
+        return "risk-on"
+    if weekly_return <= -1.5 and monthly_return <= -3.0 and volume_change >= 5:
+        return "risk-off"
+    if abs(weekly_return) < 1.0 and abs(monthly_return) < 2.0 and volatility < 0.8:
+        return "区间震荡"
+    if volatility >= 1.4 or abs(volume_change) >= 15:
+        return "高波动轮动"
+    return "结构分化"
+
+
+def _describe_volume_change(volume_change_pct: float | None) -> str:
+    """描述成交量变化"""
+    if volume_change_pct is None:
+        return "成交量暂无可比数据"
+    if volume_change_pct >= 12:
+        return f"近5个交易日均量较前一阶段放大{volume_change_pct:.1f}%"
+    if volume_change_pct <= -12:
+        return f"近5个交易日均量较前一阶段回落{abs(volume_change_pct):.1f}%"
+    return f"近5个交易日均量变化温和（{volume_change_pct:+.1f}%）"
+
+
+def _stock_news_hits(stock: dict, news_items: list[str]) -> int:
+    """统计个股与新闻的命中次数"""
+    keywords = STOCK_KEYWORDS.get(stock["code"], [])
+    mentions = 0
+    for item in news_items:
+        item_lower = item.lower()
+        if any(keyword in item_lower for keyword in keywords):
+            mentions += 1
+    return mentions
+
+
+def _rank_focus_stocks(snapshot: dict, limit: int = 3) -> list[dict]:
+    """按涨跌幅、新闻命中和量化异常挑选重点个股"""
+    ranked = []
+    market_return = snapshot.get("weekly_return") or 0
+    all_volumes = [stock["volume"] for stock in snapshot["key_stocks"] if stock.get("volume")]
+    median_volume = statistics.median(all_volumes) if all_volumes else 0
+
+    for stock in snapshot["key_stocks"]:
+        change_pct = stock.get("change_pct") or 0
+        news_hits = _stock_news_hits(stock, snapshot["news_items"])
+        volume_score = 1 if median_volume and (stock.get("volume") or 0) >= median_volume else 0
+        relative_score = 1 if change_pct * market_return < 0 else 0
+        score = abs(change_pct) * 2 + news_hits * 1.5 + volume_score + relative_score
+        ranked.append((score, abs(change_pct), stock["code"], news_hits, stock))
+
+    ranked.sort(key=lambda item: (-item[0], -item[1], item[2]))
+    return [item[-1] for item in ranked[:limit]]
+
+
+def _generate_market_overview(snapshot: dict) -> str:
+    """生成确定性的市场概况文本"""
+    index_quote = snapshot["asx200"]
+    regime = _classify_market_regime(snapshot)
+    weekly_return = snapshot.get("weekly_return")
+    monthly_return = snapshot.get("monthly_return")
+    volatility = snapshot.get("volatility") or 0
+    volume_text = _describe_volume_change(snapshot.get("volume_change_pct"))
+
+    top_gainer = max(snapshot["key_stocks"], key=lambda stock: stock.get("change_pct") or float("-inf"), default=None)
+    top_loser = min(snapshot["key_stocks"], key=lambda stock: stock.get("change_pct") or float("inf"), default=None)
+    reason_text = "；".join(snapshot["reason_items"][:2]) if snapshot["reason_items"] else "本周驱动主要来自指数涨跌与权重股轮动"
+
+    lines = [
+        f"ASX 200最新报 {_format_price(index_quote['price'])} 点，单日 {_format_pct(index_quote['change_pct'])}；过去5个交易日 {_format_pct(weekly_return)}，过去1个月 {_format_pct(monthly_return)}。",
+        f"规则判断当前市场处于“{regime}”状态；近10个交易日波动率约 {volatility:.2f}%，{volume_text}。",
+        f"本周主要驱动：{reason_text}。",
+    ]
+
+    notable_moves = []
+    if top_gainer and top_gainer.get("change_pct") is not None:
+        notable_moves.append(f"{top_gainer['code']} 领涨 {_format_pct(top_gainer['change_pct'])}")
+    if top_loser and top_loser.get("change_pct") is not None and (not top_gainer or top_loser["code"] != top_gainer["code"]):
+        notable_moves.append(f"{top_loser['code']} 领跌 {_format_pct(top_loser['change_pct'])}")
+    if notable_moves:
+        lines.append("值得注意的个股异动：" + "，".join(notable_moves) + "。")
+
+    return "\n\n".join(lines)
+
+
+def _generate_stock_analysis(snapshot: dict) -> str:
+    """生成确定性的个股分析文本"""
+    focus_stocks = _rank_focus_stocks(snapshot)
+    if not focus_stocks:
+        return "暂无可用个股数据。"
+
+    market_return = snapshot.get("weekly_return") or 0
+    sections = []
+    for stock in focus_stocks:
+        change_pct = stock.get("change_pct") or 0
+        news_hits = _stock_news_hits(stock, snapshot["news_items"])
+        if news_hits:
+            catalyst = f"相关主题在抓取新闻中出现 {news_hits} 次"
+        elif change_pct > 0 and market_return < 0:
+            catalyst = "逆势跑赢大盘，说明资金偏向防御或主题催化"
+        elif change_pct < 0 and market_return > 0:
+            catalyst = "明显落后于指数，短线承压更突出"
         else:
-            return f"API响应格式异常: {result}"
+            catalyst = "价格变动主要来自板块轮动与仓位再平衡"
 
-    except requests.exceptions.RequestException as e:
-        return f"API调用失败: {str(e)}"
-    except Exception as e:
-        return f"处理响应时出错: {str(e)}"
+        sections.append(
+            f"**{stock['code']} ({stock['name']})** — 日内波动位居样本前列\n"
+            f"涨跌幅 {_format_pct(stock.get('change_pct'))}，最新价 ${_format_price(stock.get('price'))}，成交量 {stock.get('volume') or 'N/A'}。\n"
+            f"触发逻辑：{catalyst}；若同方向波动延续，下一周更容易成为资金继续验证的对象。"
+        )
+
+    return "\n\n".join(sections)
+
+
+def _generate_investment_calendar(snapshot: dict, lookahead_days: int = 14) -> str:
+    """基于固定事件规则生成未来两周日历"""
+    today = snapshot["generated_at"].date()
+    window_end = today + timedelta(days=lookahead_days)
+    events = []
+
+    for month_offset in range(2):
+        month_anchor = today.replace(day=1)
+        probe_month = month_anchor.month + month_offset
+        probe_year = month_anchor.year + ((probe_month - 1) // 12)
+        probe_month = ((probe_month - 1) % 12) + 1
+
+        for rule in EVENT_RULES:
+            event_dt = _nth_weekday_of_month(probe_year, probe_month, rule["weekday"], rule["occurrence"])
+            if not event_dt:
+                continue
+            event_date = event_dt.date()
+            if today <= event_date <= window_end:
+                events.append((event_date, rule["name"], rule["impact"]))
+
+    if today.month in (1, 2, 4, 7, 10):
+        earnings_date = today + timedelta(days=7)
+        if earnings_date <= window_end:
+            events.append((earnings_date, "财报与经营更新窗口", "资源、银行与消费龙头更容易出现业绩驱动波动"))
+
+    events = sorted(set(events), key=lambda item: item[0])[:8]
+    if not events:
+        return "- **未来两周** - 暂无固定高频宏观事件，重点关注指数波动和权重股公告。"
+
+    return "\n".join(
+        f"- **{event_date.month}月{event_date.day}日** - {name}，{impact}"
+        for event_date, name, impact in events
+    )
+
+
+def _generate_risk_alert(snapshot: dict) -> str:
+    """基于波动、成交量和事件规则生成风险提示"""
+    alerts = []
+    weekly_return = snapshot.get("weekly_return") or 0
+    volatility = snapshot.get("volatility") or 0
+    volume_change = snapshot.get("volume_change_pct") or 0
+    upcoming_events = _generate_investment_calendar(snapshot).splitlines()
+
+    if volatility >= 1.4:
+        alerts.append(
+            f"- **波动率抬升风险**：近10个交易日波动率已升至 {volatility:.2f}%。若接下来宏观数据偏离预期，ASX 200短线波动可能继续放大。"
+        )
+    if weekly_return <= -1.5 and volume_change >= 5:
+        alerts.append(
+            f"- **放量下跌风险**：指数近5个交易日回报为 {_format_pct(weekly_return)}，同时量能变化 {volume_change:+.1f}%。这通常代表避险交易升温，银行和资源股回撤压力更大。"
+        )
+    if upcoming_events:
+        first_event = upcoming_events[0].lstrip("- ").replace("**", "")
+        alerts.append(
+            f"- **事件前重定价风险**：即将到来的 {first_event}。若结果与市场预期偏离，利率敏感与高估值板块最容易先出现价格重定价。"
+        )
+    if not alerts:
+        alerts.append("- **当前无特殊风险事件**：波动率与成交量均未触发高风险阈值，短线更像常规区间波动。")
+
+    return "\n".join(alerts[:3])
 
 
 def markdown_to_html(text: str) -> str:
@@ -821,124 +1040,31 @@ def markdown_to_html(text: str) -> str:
 
 def generate_market_research() -> dict:
     """
-    使用AI进行市场调研，生成完整的周报内容
+    使用确定性规则生成完整的周报内容
 
     Returns:
         包含各部分内容的字典
     """
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 开始市场调研...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 开始生成确定性周报...")
+    snapshot = _build_market_snapshot()
 
-    # ============== 首先获取实时数据 ==============
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🌐 正在获取实时市场数据...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在生成市场概况...")
+    market_overview = _generate_market_overview(snapshot)
 
-    # 方法1：尝试抓取财经网站
-    try:
-        realtime_context = get_real_time_data()
-    except Exception as e:
-        print(f"    ⚠️  网页抓取失败: {e}")
-        realtime_context = ""
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在生成个股分析...")
+    stock_analysis = _generate_stock_analysis(snapshot)
 
-    # 方法2：如果抓取失败，使用搜索API（需要配置）
-    if not realtime_context or realtime_context.strip() == "":
-        print(f"    📡 尝试使用搜索API...")
-        try:
-            # 这里可以集成搜索API
-            # 例如使用SerpApi或其他搜索服务
-            search_results = search_web_simulated("ASX 200 market news this week")
-            if search_results:
-                realtime_context = "搜索结果:\n"
-                for result in search_results[:5]:
-                    realtime_context += f"- {result.get('title', '')}\n"
-        except Exception as e:
-            print(f"    ⚠️  搜索失败: {e}")
-            realtime_context = ""
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在生成投资日历...")
+    investment_calendar = _generate_investment_calendar(snapshot)
 
-    # 如果都没有获取到实时数据，提示用户
-    if not realtime_context or realtime_context.strip() == "":
-        print(f"    ⚠️  无法获取实时数据，将使用模型预训练知识")
-        print(f"    💡 建议: 集成搜索API或数据源以获得更准确的分析")
-        realtime_context = ""
-
-    # ============== 使用LLM分析数据 ==============
-
-    # 第一部分：市场整体概况
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在分析ASX市场整体概况...")
-    market_overview_prompt = """你是一名给朋友写邮件的澳洲股市分析师。用简洁直白的语言总结今日ASX市场。
-
-**严格要求：**
-- 不要自我介绍，不要写"报告日期"、"分析师"等元信息
-- 不要写"根据现有信息无法确认"之类的废话，没有数据就跳过
-- 不要加"总结"段落，全文本身就是总结
-- 用数字说话，少用形容词
-- 全文控制在300字以内
-
-**内容（每项1-2句话）：**
-1. ASX 200今日收盘点位、涨跌幅
-2. 今日最大的1-2个市场驱动因素
-3. 值得注意的板块或个股异动
-
-今天是{current_date}。"""
-
-    market_overview = call_zai_api(market_overview_prompt, realtime_context)
-
-    # 第二部分：个股深度分析
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在进行个股深度分析...")
-    stock_analysis_prompt = """根据今日市场新闻，挑选2-3只最值得关注的ASX股票，简要分析。
-
-**严格要求：**
-- 不要自我介绍或写报告元信息
-- 不要写"根据现有信息无法确认"，没数据就不提
-- 每只股票控制在100字以内
-- 不要写技术分析（支撑位、阻力位），普通读者不关心
-- 只写读者能行动的信息
-
-**每只股票格式：**
-- **股票代码 公司名** — 一句话说明今天为什么值得关注
-- 股价表现（涨跌幅）
-- 关键原因（1-2句话）
-
-请用中文回复，像写给朋友的消息一样直接。"""
-
-    stock_analysis = call_zai_api(stock_analysis_prompt, realtime_context)
-
-    # 第三部分：投资日历
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在整理下周投资日历...")
-    investment_calendar_prompt = """列出未来1-2周ASX相关的重要事件。
-
-**格式要求：**
-- 每个事件一行：**日期** - 事件（一句话说明影响）
-- 只列确定的事件，不确定就不写
-- 最多列8个事件
-- 不要写开头的引言段落，直接列事件
-
-示例：
-- **3月10日** - RBA利率决议，市场预期维持不变
-- **3月12日** - NAB商业信心指数公布
-
-请用中文回复。"""
-
-    investment_calendar = call_zai_api(investment_calendar_prompt, realtime_context)
-
-    # 第四部分：风险提示
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在分析风险因素...")
-    risk_alert_prompt = """列出当前1-2个最紧迫的市场风险。
-
-**要求：**
-- 只写有具体时间点或触发条件的风险
-- 不写"地缘政治不确定性"之类的泛泛之谈
-- 每个风险2-3句话，说清楚是什么、什么时候、可能怎样
-- 如果没有明确的即时风险，就写"当前无特殊风险事件"
-- 不要写开头引言
-
-请用中文回复。"""
-
-    risk_alert = call_zai_api(risk_alert_prompt, realtime_context)
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 正在生成风险提示...")
+    risk_alert = _generate_risk_alert(snapshot)
 
     return {
         "market_overview": market_overview,
         "stock_analysis": stock_analysis,
         "investment_calendar": investment_calendar,
-        "risk_alert": risk_alert
+        "risk_alert": risk_alert,
     }
 
 
@@ -1226,7 +1352,7 @@ def generate_report_content(research_data: dict) -> str:
         </div>
 
         <div class="footer">
-            AI自动生成，仅供参考，不构成投资建议。<br>
+            规则引擎自动生成，仅供参考，不构成投资建议。<br>
             生成时间: {now.strftime('%Y-%m-%d %H:%M')}
         </div>
     </div>
@@ -1425,7 +1551,7 @@ def update_archive_index(report_filename: str) -> None:
     </table>
 
     <div class="footer">
-        AI自动生成，仅供参考。<br>
+        规则引擎自动生成，仅供参考。<br>
         最后更新: {datetime.now().strftime('%Y-%m-%d %H:%M')}
     </div>
 </body>
@@ -1465,7 +1591,7 @@ def generate_text_summary(research_data: dict) -> str:
 {research_data.get('risk_alert', '暂无数据')}
 
 ---
-AI自动生成，仅供参考，不构成投资建议。
+规则引擎自动生成，仅供参考，不构成投资建议。
 """
     return summary
 
@@ -1479,16 +1605,8 @@ def main():
     print()
 
     # 检查配置
-    if not ZAI_API_KEY:
-        print("⚠️ 警告: 未设置ZAI_API_KEY环境变量")
-        print("请运行: export ZAI_API_KEY='your_api_key'")
-        return
-
     if not GMAIL_ADDRESS or not GMAIL_APP_PASSWORD:
-        print("⚠️ 警告: 未设置Gmail配置")
-        print("请运行: export GMAIL_ADDRESS='your@gmail.com'")
-        print("请运行: export GMAIL_APP_PASSWORD='your_app_password'")
-        return
+        print("⚠️ 警告: 未设置完整Gmail配置，本次将跳过邮件发送")
 
     try:
         # 1. 进行市场调研
@@ -1522,13 +1640,16 @@ def main():
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 纯文本版已保存到: {txt_path}")
 
         # 5. 发送邮件
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 发送邮件中...")
-        email_sent = send_email(report_html, report_date)
+        if GMAIL_ADDRESS and GMAIL_APP_PASSWORD and RECIPIENT_EMAIL:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] 发送邮件中...")
+            email_sent = send_email(report_html, report_date)
 
-        if email_sent:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 周报生成完成！")
+            if email_sent:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 周报生成完成！")
+            else:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ 周报已生成但邮件发送失败")
         else:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ 周报已生成但邮件发送失败")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 周报生成完成（未配置邮件发送）")
 
     except Exception as e:
         print(f"❌ 发生错误: {str(e)}")
