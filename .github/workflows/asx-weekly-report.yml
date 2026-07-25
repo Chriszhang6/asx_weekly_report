@@ -2,8 +2,7 @@
 # GitHub Actions Workflow - 澳洲股市投资周报
 # =============================================================================
 # 说明：
-# 1. 在 GitHub 仓库设置中添加以下 Secrets：
-#    - ZAI_API_KEY: Z.ai GLM API密钥
+# 1. 在 GitHub 仓库设置中添加以下 Secrets（邮件发送可选）：
 #    - GMAIL_ADDRESS: Gmail邮箱地址
 #    - GMAIL_APP_PASSWORD: Gmail应用密码
 #    - RECIPIENT_EMAIL: 收件人邮箱（可选）
@@ -48,12 +47,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          pip install requests html2text matplotlib
 
       # 创建 .env 文件（从 GitHub Secrets）
       - name: Create .env file
         run: |
-          echo "ZAI_API_KEY=${{ secrets.ZAI_API_KEY }}" >> .env
           echo "GMAIL_ADDRESS=${{ secrets.GMAIL_ADDRESS }}" >> .env
           echo "GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}" >> .env
           echo "RECIPIENT_EMAIL=${{ secrets.RECIPIENT_EMAIL }}" >> .env
@@ -63,7 +61,6 @@ jobs:
         run: python3 asx_weekly_reporter.py
         env:
           # 确保 Python 脚本能读取环境变量
-          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}

@@ -21,6 +21,8 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+# Keep the dependency list aligned with the currently supported runtime libraries in README/workflow.
+DEPS="requests html2text matplotlib"
 
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,8 +50,8 @@ if ! command -v pip3 &> /dev/null; then
     python3 -m ensurepip --upgrade 2>/dev/null || true
 fi
 
-echo "正在安装依赖: requests, yfinance, html2text, matplotlib"
-pip3 install --user requests yfinance html2text matplotlib 2>/dev/null || pip3 install requests yfinance html2text matplotlib
+echo "正在安装依赖: $DEPS"
+pip3 install --user $DEPS 2>/dev/null || pip3 install $DEPS
 
 echo -e "${GREEN}✓${NC} 依赖安装完成"
 
@@ -81,14 +83,8 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "所有配置将保存到 .env 文件（不会被提交到Git）"
     echo ""
 
-    # Z.ai API Key
-    echo -e "${YELLOW}[1/4] Z.ai GLM API Key${NC}"
-    echo "获取地址: https://open.bigmodel.cn/"
-    read -p "请输入您的API Key: " ZAI_API_KEY
-    echo ""
-
     # Gmail配置
-    echo -e "${YELLOW}[2/4] Gmail 配置${NC}"
+    echo -e "${YELLOW}[1/3] Gmail 配置${NC}"
     read -p "请输入您的Gmail邮箱地址: " GMAIL_ADDRESS
     echo ""
     echo "Gmail应用密码获取方式："
@@ -102,7 +98,7 @@ if [ ! -f "$ENV_FILE" ]; then
     echo ""
 
     # 收件人邮箱
-    echo -e "${YELLOW}[3/4] 收件人邮箱${NC}"
+    echo -e "${YELLOW}[2/3] 收件人邮箱${NC}"
     read -p "请输入收件人邮箱（直接回车使用发送邮箱）: " RECIPIENT_EMAIL
     if [ -z "$RECIPIENT_EMAIL" ]; then
         RECIPIENT_EMAIL="$GMAIL_ADDRESS"
@@ -110,11 +106,10 @@ if [ ! -f "$ENV_FILE" ]; then
     echo ""
 
     # 确认信息
-    echo -e "${YELLOW}[4/4] 确认配置${NC}"
+    echo -e "${YELLOW}[3/3] 确认配置${NC}"
     echo ""
     echo "发送邮箱: $GMAIL_ADDRESS"
     echo "收件邮箱: $RECIPIENT_EMAIL"
-    echo "Z.ai API Key: ${ZAI_API_KEY:0:8}...（已隐藏）"
     echo ""
     read -p "确认以上配置正确？(Y/n) " -n 1 -r
     echo ""
@@ -125,9 +120,6 @@ if [ ! -f "$ENV_FILE" ]; then
 
     # 写入.env文件
     cat > "$ENV_FILE" << EOF
-# Z.ai GLM API配置
-ZAI_API_KEY=$ZAI_API_KEY
-
 # Gmail SMTP配置
 GMAIL_ADDRESS=$GMAIL_ADDRESS
 GMAIL_APP_PASSWORD=$GMAIL_APP_PASSWORD
